@@ -91,7 +91,7 @@ python ./prepare/clip_utils.py
 A file `ovd_coco_text_embedding.pth` will be created (we have already extracted this for you).
 
 ### Download OLN proposals
-Download OLN proposals from [this link](#)
+Download OLN proposals from [this link](https://github.com/VinAIResearch/LP-OVOD/releases/download/v1.0/coco_proposals.pkl).
 
 ### Extract the CLIP visual embeddings on pre-computed proposals
 This embeddings will be used for computing the Knowledge Distillation loss and retrieving novel proposals
@@ -123,6 +123,28 @@ sh ./scripts/vild_sigmoid_ft.sh
 ```
 sh ./scripts/vild_sigmoid_test.sh
 ```
+You should change the checkpoint in each script accordingly to the path in your machine.
+### Evaluation with pre-trained models
+<table><tbody>
+<!-- START TABLE -->
+<!-- TABLE HEADER -->
+<th valign="bottom">Novel AP</th>
+<th valign="bottom">Base AP</th>
+<th valign="bottom">Overall AP</th>
+<th valign="bottom">download</th>
+<!-- TABLE BODY -->
+<!-- ROW: with LSJ -->
+ <tr>
+<td align="center">40.5</td>
+<td align="center">60.5</td>
+<td align="center">55.2</td>
+
+<td align="center"><a href="https://github.com/VinAIResearch/LP-OVOD/releases/download/v1.0/vild_sigmoid_ft.pth">model</a></td>
+</tr>
+</tr>
+
+
+</tbody></table>
 
 ## **Contacts**
 If you have any questions about this project, contact via truongvu0911nd@gmail.com or open an issue in this repository
