@@ -44,9 +44,6 @@ Please **CITE** our paper whenever this repository is used to help produce publi
 ## Requirements
 + python3.8
 + pytorch 1.7.0
-+ cuda 11.0
-+ OpenAI CLIP
-+ faiss
 
 ```
 pip install -r requirements/build.txt
