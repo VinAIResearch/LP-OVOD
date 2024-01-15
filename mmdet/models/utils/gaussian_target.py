@@ -1,9 +1,9 @@
-from math import sqrt
-
 import torch
 
+from math import sqrt
 
-def gaussian2D(radius, sigma=1, dtype=torch.float32, device='cpu'):
+
+def gaussian2D(radius, sigma=1, dtype=torch.float32, device="cpu"):
     """Generate 2D gaussian kernel.
 
     Args:
@@ -16,10 +16,8 @@ def gaussian2D(radius, sigma=1, dtype=torch.float32, device='cpu'):
         h (Tensor): Gaussian kernel with a
             ``(2 * radius + 1) * (2 * radius + 1)`` shape.
     """
-    x = torch.arange(
-        -radius, radius + 1, dtype=dtype, device=device).view(1, -1)
-    y = torch.arange(
-        -radius, radius + 1, dtype=dtype, device=device).view(-1, 1)
+    x = torch.arange(-radius, radius + 1, dtype=dtype, device=device).view(1, -1)
+    y = torch.arange(-radius, radius + 1, dtype=dtype, device=device).view(-1, 1)
 
     h = (-(x * x + y * y) / (2 * sigma * sigma)).exp()
 
@@ -41,8 +39,7 @@ def gen_gaussian_target(heatmap, center, radius, k=1):
         out_heatmap (Tensor): Updated heatmap covered by gaussian kernel.
     """
     diameter = 2 * radius + 1
-    gaussian_kernel = gaussian2D(
-        radius, sigma=diameter / 6, dtype=heatmap.dtype, device=heatmap.device)
+    gaussian_kernel = gaussian2D(radius, sigma=diameter / 6, dtype=heatmap.dtype, device=heatmap.device)
 
     x, y = center
 
@@ -51,14 +48,10 @@ def gen_gaussian_target(heatmap, center, radius, k=1):
     left, right = min(x, radius), min(width - x, radius + 1)
     top, bottom = min(y, radius), min(height - y, radius + 1)
 
-    masked_heatmap = heatmap[y - top:y + bottom, x - left:x + right]
-    masked_gaussian = gaussian_kernel[radius - top:radius + bottom,
-                                      radius - left:radius + right]
+    masked_heatmap = heatmap[y - top : y + bottom, x - left : x + right]
+    masked_gaussian = gaussian_kernel[radius - top : radius + bottom, radius - left : radius + right]
     out_heatmap = heatmap
-    torch.max(
-        masked_heatmap,
-        masked_gaussian * k,
-        out=out_heatmap[y - top:y + bottom, x - left:x + right])
+    torch.max(masked_heatmap, masked_gaussian * k, out=out_heatmap[y - top : y + bottom, x - left : x + right])
 
     return out_heatmap
 
@@ -166,7 +159,7 @@ def gaussian_radius(det_size, min_overlap):
     height, width = det_size
 
     a1 = 1
-    b1 = (height + width)
+    b1 = height + width
     c1 = width * height * (1 - min_overlap) / (1 + min_overlap)
     sq1 = sqrt(b1**2 - 4 * a1 * c1)
     r1 = (b1 - sq1) / (2 * a1)

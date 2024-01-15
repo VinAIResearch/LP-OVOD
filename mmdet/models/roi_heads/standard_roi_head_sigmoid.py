@@ -1,61 +1,71 @@
-import os
-import os.path as osp
-import time
-
+import mmcv
 import numpy as np
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
 import clip
-import mmcv
-from mmcv.ops.roi_align import roi_align
+import os.path as osp
+import time
+from fvcore.nn import sigmoid_focal_loss_jit
 from mmdet.core import bbox2result, bbox2roi, build_assigner, build_sampler
+from tqdm import tqdm
 from ..builder import HEADS, build_head, build_roi_extractor
 from .base_roi_head import BaseRoIHead
+from .class_name import (
+    COCO_CLASSES,
+    COCO_OVD_ALL_CLS,
+    COCO_SEEN_CLS,
+    COCO_UNSEEN_CLS,
+    LVIS_CLASSES,
+    VOC_CLASSES,
+    Object365_CLASSES,
+    coco_unseen_ids_test,
+    coco_unseen_ids_train,
+    lvis_base_label_ids,
+    lvis_novel_label_ids,
+    template_list,
+    voc_novel_label_ids,
+)
 from .test_mixins import BBoxTestMixin, MaskTestMixin
-from .class_name import *
-from PIL import Image
-from mmdet.core import (bbox2roi, bbox_mapping, merge_aug_bboxes,
-                        merge_aug_masks, multiclass_nms)
-from tqdm import tqdm
-from fvcore.nn import sigmoid_focal_loss_jit
 
 
 @HEADS.register_module()
 class StandardRoIHeadSigmoid(BaseRoIHead, BBoxTestMixin, MaskTestMixin):
     """Simplest base roi head including one bbox head and one mask head."""
 
-    def __init__(self,
-                 bbox_roi_extractor=None,
-                 bbox_head=None,
-                 mask_roi_extractor=None,
-                 mask_head=None,
-                 shared_head=None,
-                 train_cfg=None,
-                 test_cfg=None,
-                 kd_weight=256,
-                 prompt_path=None,
-                 feature_path='data/lvis_clip_image_embedding',
-                 proposal_id_map=None,
-                 clip_root='',
-                 temperature=0.02,
-                 temperature_test=0.02,
-                 alpha=0.,
-                 beta=0.4,
-                 **kwargs,
-                 ):
-        super(StandardRoIHeadSigmoid, self).__init__(bbox_roi_extractor=bbox_roi_extractor,
-                                                     bbox_head=bbox_head,
-                                                     mask_roi_extractor=mask_roi_extractor,
-                                                     mask_head=mask_head,
-                                                     shared_head=shared_head,
-                                                     train_cfg=train_cfg,
-                                                     test_cfg=test_cfg,
-                                                     )
+    def __init__(
+        self,
+        bbox_roi_extractor=None,
+        bbox_head=None,
+        mask_roi_extractor=None,
+        mask_head=None,
+        shared_head=None,
+        train_cfg=None,
+        test_cfg=None,
+        kd_weight=256,
+        prompt_path=None,
+        feature_path="data/lvis_clip_image_embedding",
+        proposal_id_map=None,
+        clip_root="",
+        temperature=0.02,
+        temperature_test=0.02,
+        alpha=0.0,
+        beta=0.4,
+        **kwargs,
+    ):
+        super(StandardRoIHeadSigmoid, self).__init__(
+            bbox_roi_extractor=bbox_roi_extractor,
+            bbox_head=bbox_head,
+            mask_roi_extractor=mask_roi_extractor,
+            mask_head=mask_head,
+            shared_head=shared_head,
+            train_cfg=train_cfg,
+            test_cfg=test_cfg,
+        )
         device = "cuda" if torch.cuda.is_available() else "cpu"
         self.device = device
-        
+
         if bbox_head.num_classes == 48:
             self.CLASSES = COCO_OVD_ALL_CLS
         elif bbox_head.num_classes == 65:
@@ -70,73 +80,95 @@ class StandardRoIHeadSigmoid(BaseRoIHead, BBoxTestMixin, MaskTestMixin):
             self.CLASSES = Object365_CLASSES
         else:
             raise ValueError(f"{bbox_head.num_classes} is an invalid bbox_head num_classes!")
-            
+
         # NOTE: num_classes (65) != bbox_head.num_classes (48)
         # num_classes for evaluation, bbox_head.num_classes for training
         self.num_classes = len(self.CLASSES)
-        
+
         if self.num_classes == 1203:
             self.base_label_ids = torch.tensor(lvis_base_label_ids, device=device)
             self.novel_label_ids = torch.tensor(lvis_novel_label_ids, device=device)
-            self.novel_index = F.pad(torch.bincount(self.novel_label_ids),(0,self.num_classes-1-self.novel_label_ids.max())).bool()
+            self.novel_index = F.pad(
+                torch.bincount(self.novel_label_ids),
+                (0, self.num_classes - 1 - self.novel_label_ids.max()),
+            ).bool()
         elif self.num_classes == 20:
             self.novel_label_ids = torch.tensor(voc_novel_label_ids, device=device)
-            self.novel_index = F.pad(torch.bincount(self.novel_label_ids),(0,self.num_classes-1-self.novel_label_ids.max())).bool()
+            self.novel_index = F.pad(
+                torch.bincount(self.novel_label_ids),
+                (0, self.num_classes - 1 - self.novel_label_ids.max()),
+            ).bool()
         elif self.num_classes == 80:
             self.novel_label_ids = torch.tensor(coco_unseen_ids_train, device=device)
             self.unseen_label_ids_test = torch.tensor(coco_unseen_ids_test, device=device)
-            self.novel_index = F.pad(torch.bincount(self.novel_label_ids),(0,self.num_classes-1-self.novel_label_ids.max())).bool()
+            self.novel_index = F.pad(
+                torch.bincount(self.novel_label_ids),
+                (0, self.num_classes - 1 - self.novel_label_ids.max()),
+            ).bool()
         elif self.num_classes == 65:
             base_label_ids = [COCO_OVD_ALL_CLS.index(i) for i in COCO_SEEN_CLS]
             self.base_label_ids = torch.tensor(base_label_ids, device=device)
             novel_label_ids = [COCO_OVD_ALL_CLS.index(i) for i in COCO_UNSEEN_CLS]
             self.novel_label_ids = torch.tensor(novel_label_ids, device=device)
-            self.novel_index = F.pad(torch.bincount(self.novel_label_ids),(0,self.num_classes-1-self.novel_label_ids.max())).bool()
-            
+            self.novel_index = F.pad(
+                torch.bincount(self.novel_label_ids),
+                (0, self.num_classes - 1 - self.novel_label_ids.max()),
+            ).bool()
+
         # config
         self.kd_weight = kd_weight
-        
+
         # Load text embedding
         if proposal_id_map is not None:
             self.proposal_id_map = mmcv.load(proposal_id_map)
-            num_proposals = sum(self.proposal_id_map['num_proposal'])
-            self.num_proposals_per_img_cum = np.cumsum(self.proposal_id_map['num_proposal'])
+            num_proposals = sum(self.proposal_id_map["num_proposal"])
+            self.num_proposals_per_img_cum = np.cumsum(self.proposal_id_map["num_proposal"])
             self.num_proposals_per_img_cum = np.insert(self.num_proposals_per_img_cum, 0, 0)
             self.clip_features = torch.FloatTensor(
-                torch.FloatStorage.from_file(feature_path, shared=True, size=num_proposals * 512)).reshape(num_proposals, -1)
+                torch.FloatStorage.from_file(feature_path, shared=True, size=num_proposals * 512)
+            ).reshape(num_proposals, -1)
         self.text_features_for_classes = []
         self.ensemble = bbox_head.ensemble
         if prompt_path is not None:
             save_path = prompt_path
         else:
-            save_path = 'text_embedding.pt'
-        
+            save_path = "text_embedding.pt"
+
         if osp.exists(save_path):
             self.text_features_for_classes = torch.load(save_path).to(device).squeeze()
             print(f"Prompt path exist, load from {save_path} with shape {self.text_features_for_classes.shape}")
         else:
             # Load clip
-            clip_model, self.preprocess = clip.load('ViT-B/32', device, download_root=clip_root)
+            clip_model, self.preprocess = clip.load("ViT-B/32", device, download_root=clip_root)
             clip_model.eval()
             for child in clip_model.children():
                 for param in child.parameters():
                     param.requires_grad = False
             time_start = time.time()
             for template in tqdm(template_list):
-                text_features_for_classes = torch.cat([clip_model.encode_text(clip.tokenize(template.format(c)).to(device)).detach() for c in self.CLASSES])
-                self.text_features_for_classes.append(F.normalize(text_features_for_classes,dim=-1))
+                text_features_for_classes = torch.cat(
+                    [
+                        clip_model.encode_text(clip.tokenize(template.format(c)).to(device)).detach()
+                        for c in self.CLASSES
+                    ]
+                )
+                self.text_features_for_classes.append(F.normalize(text_features_for_classes, dim=-1))
 
             self.text_features_for_classes = torch.stack(self.text_features_for_classes).mean(dim=0)
             torch.save(self.text_features_for_classes.detach().cpu(), save_path)
-            print('Text embedding finished, {} passed, shape {}'.format(time.time()-time_start, self.text_features_for_classes.shape))
-        
+            print(
+                "Text embedding finished, {} passed, shape {}".format(
+                    time.time() - time_start, self.text_features_for_classes.shape
+                )
+            )
+
         self.temperature_test = temperature_test
         self.alpha = alpha
         self.beta = beta
-        
+
         self.prototype = nn.Parameter(torch.zeros((len(self.base_label_ids), 1024)), requires_grad=True)
         nn.init.xavier_uniform_(self.prototype)
-        
+
         # if ensemble, use a different head to output score for ensembling
         if self.ensemble:
             self.projection_for_image = nn.Linear(1024, 512)
@@ -149,8 +181,7 @@ class StandardRoIHeadSigmoid(BaseRoIHead, BBoxTestMixin, MaskTestMixin):
         self.bbox_sampler = None
         if self.train_cfg:
             self.bbox_assigner = build_assigner(self.train_cfg.assigner)
-            self.bbox_sampler = build_sampler(
-                self.train_cfg.sampler, context=self)
+            self.bbox_sampler = build_sampler(self.train_cfg.sampler, context=self)
 
     def init_bbox_head(self, bbox_roi_extractor, bbox_head):
         """Initialize ``bbox_head``"""
@@ -191,24 +222,25 @@ class StandardRoIHeadSigmoid(BaseRoIHead, BBoxTestMixin, MaskTestMixin):
         rois = bbox2roi([proposals])
         if self.with_bbox:
             bbox_results = self._bbox_forward(x, rois)
-            outs = outs + (bbox_results['cls_score'],
-                           bbox_results['bbox_pred'])
+            outs = outs + (bbox_results["cls_score"], bbox_results["bbox_pred"])
         # mask head
         if self.with_mask:
             mask_rois = rois[:100]
             mask_results = self._mask_forward(x, mask_rois)
-            outs = outs + (mask_results['mask_pred'], )
+            outs = outs + (mask_results["mask_pred"],)
         return outs
 
-    def forward_train(self,
-                      x,
-                      img_metas,
-                      proposal_list,
-                      proposals_pre_computed,
-                      gt_bboxes,
-                      gt_labels,
-                      gt_bboxes_ignore=None,
-                      gt_masks=None):
+    def forward_train(
+        self,
+        x,
+        img_metas,
+        proposal_list,
+        proposals_pre_computed,
+        gt_bboxes,
+        gt_labels,
+        gt_bboxes_ignore=None,
+        gt_masks=None,
+    ):
         """
         Args:
             x (list[Tensor]): list of multi-level img features.
@@ -237,30 +269,36 @@ class StandardRoIHeadSigmoid(BaseRoIHead, BBoxTestMixin, MaskTestMixin):
             sampling_results = []
             for i in range(num_imgs):
                 assign_result = self.bbox_assigner.assign(
-                    proposal_list[i], gt_bboxes[i], gt_bboxes_ignore[i],
-                    gt_labels[i])
+                    proposal_list[i], gt_bboxes[i], gt_bboxes_ignore[i], gt_labels[i]
+                )
                 sampling_result = self.bbox_sampler.sample(
                     assign_result,
                     proposal_list[i],
                     gt_bboxes[i],
                     gt_labels[i],
-                    feats=[lvl_feat[i][None] for lvl_feat in x])
+                    feats=[lvl_feat[i][None] for lvl_feat in x],
+                )
                 sampling_results.append(sampling_result)
 
         losses = dict()
         # bbox head forward and loss
         if self.with_bbox:
-            bbox_results = self._bbox_forward_train(x, sampling_results,proposals_pre_computed,
-                                                    gt_bboxes, gt_labels,
-                                                    img_metas)
-            losses.update(bbox_results['loss_bbox'])
+            bbox_results = self._bbox_forward_train(
+                x,
+                sampling_results,
+                proposals_pre_computed,
+                gt_bboxes,
+                gt_labels,
+                img_metas,
+            )
+            losses.update(bbox_results["loss_bbox"])
 
         # mask head forward and loss
         if self.with_mask:
-            mask_results = self._mask_forward_train(x, sampling_results,
-                                                    bbox_results['bbox_feats'],
-                                                    gt_masks, img_metas)
-            losses.update(mask_results['loss_mask'])
+            mask_results = self._mask_forward_train(
+                x, sampling_results, bbox_results["bbox_feats"], gt_masks, img_metas
+            )
+            losses.update(mask_results["loss_mask"])
 
         return losses
 
@@ -270,14 +308,12 @@ class StandardRoIHeadSigmoid(BaseRoIHead, BBoxTestMixin, MaskTestMixin):
         Box head forward function used in both training and testing."""
         # TODO: a more flexible way to decide which feature maps to use
         rois = rois.float()
-        bbox_feats = self.bbox_roi_extractor(
-            x[:self.bbox_roi_extractor.num_inputs], rois)
+        bbox_feats = self.bbox_roi_extractor(x[: self.bbox_roi_extractor.num_inputs], rois)
         if self.with_shared_head:
             bbox_feats = self.shared_head(bbox_feats)
         region_embeddings = self.bbox_head.forward_embedding(bbox_feats)
         bbox_pred = self.bbox_head(region_embeddings)
-        bbox_results = dict(
-            bbox_pred=bbox_pred, bbox_feats=bbox_feats)
+        bbox_results = dict(bbox_pred=bbox_pred, bbox_feats=bbox_feats)
         return bbox_results, region_embeddings
 
     def _bbox_forward_for_image(self, x, rois):
@@ -286,8 +322,7 @@ class StandardRoIHeadSigmoid(BaseRoIHead, BBoxTestMixin, MaskTestMixin):
         Box head forward function used in both training and testing."""
         # TODO: a more flexible way to decide which feature maps to use
         rois = rois.float()
-        bbox_feats = self.bbox_roi_extractor(
-            x[:self.bbox_roi_extractor.num_inputs], rois)
+        bbox_feats = self.bbox_roi_extractor(x[: self.bbox_roi_extractor.num_inputs], rois)
         if self.with_shared_head:
             bbox_feats = self.shared_head(bbox_feats)
 
@@ -295,45 +330,50 @@ class StandardRoIHeadSigmoid(BaseRoIHead, BBoxTestMixin, MaskTestMixin):
 
         return None, region_embeddings
 
-    def _bbox_forward_train(self, x, sampling_results, proposals_pre_computed, gt_bboxes, gt_labels,
-                            img_metas):
+    def _bbox_forward_train(
+        self,
+        x,
+        sampling_results,
+        proposals_pre_computed,
+        gt_bboxes,
+        gt_labels,
+        img_metas,
+    ):
         """Run forward function and calculate loss for box head in training."""
-        
+
         # -------------Classification loss---------------
         rois = bbox2roi([res.bboxes for res in sampling_results])
-        
+
         bbox_results, region_embeddings = self._bbox_forward(x, rois)
-        
+
         cls_score_text = region_embeddings @ self.prototype.T
-        bbox_targets = self.bbox_head.get_targets(sampling_results, gt_bboxes,
-                                                  gt_labels, self.train_cfg)
+        bbox_targets = self.bbox_head.get_targets(sampling_results, gt_bboxes, gt_labels, self.train_cfg)
         labels, _, _, _ = bbox_targets
         bin_labels = labels.new_full((labels.size(0), self.num_classes), 0)
-        inds = torch.nonzero(
-            (labels >= 0) & (labels < self.num_classes), as_tuple=False).squeeze()
+        inds = torch.nonzero((labels >= 0) & (labels < self.num_classes), as_tuple=False).squeeze()
         if inds.numel() > 0:
             bin_labels[inds, labels[inds]] = 1
 
         bin_labels = bin_labels[:, self.base_label_ids]
-        
+
         num_pos_bboxes = sum([res.pos_bboxes.size(0) for res in sampling_results])
-        cls_loss = sigmoid_focal_loss_jit(
-            cls_score_text, bin_labels, 
-            reduction="sum",
-            gamma=2, alpha=0.25) / num_pos_bboxes
-        loss_bbox = self.bbox_head.loss(
-            bbox_results['bbox_pred'], rois,
-            *bbox_targets)
-        
+        cls_loss = (
+            sigmoid_focal_loss_jit(cls_score_text, bin_labels, reduction="sum", gamma=2, alpha=0.25) / num_pos_bboxes
+        )
+        loss_bbox = self.bbox_head.loss(bbox_results["bbox_pred"], rois, *bbox_targets)
+
         loss_bbox.update(cls_loss=cls_loss)
-        
+
         # ---------------Knowledge distillation------------------------
-        if self.kd_weight > 0: 
+        if self.kd_weight > 0:
             num_proposals_per_img = tuple(len(proposal) for proposal in proposals_pre_computed)
             rois_image = torch.cat(proposals_pre_computed, dim=0)
-            batch_index = torch.cat([x[0].new_full((num_proposals_per_img[i],1),i) for i in range(len(num_proposals_per_img))],0)
+            batch_index = torch.cat(
+                [x[0].new_full((num_proposals_per_img[i], 1), i) for i in range(len(num_proposals_per_img))],
+                0,
+            )
             bboxes = torch.cat([batch_index, rois_image[..., :4]], dim=-1)
-            
+
             if self.ensemble:
                 _, region_embeddings_image = self._bbox_forward_for_image(x, bboxes)
                 region_embeddings_image = self.projection_for_image(region_embeddings_image)
@@ -344,20 +384,21 @@ class StandardRoIHeadSigmoid(BaseRoIHead, BBoxTestMixin, MaskTestMixin):
             clip_image_features_ensemble = []
             for i in range(len(img_metas)):
                 try:
-                    img_id = int(img_metas[i]['ori_filename'].split('.')[0].split('/')[1])
+                    img_id = int(img_metas[i]["ori_filename"].split(".")[0].split("/")[1])
                     proposal_id = self.proposal_id_map[str(img_id)]
-                    tmp = self.clip_features[self.num_proposals_per_img_cum[proposal_id]:self.num_proposals_per_img_cum[proposal_id+1]].to(self.device)
+                    tmp = self.clip_features[
+                        self.num_proposals_per_img_cum[proposal_id] : self.num_proposals_per_img_cum[proposal_id + 1]
+                    ].to(self.device)
                     clip_image_features_ensemble.append(tmp.to(self.device))
-                except:
-                    raise ValueError(f"Proposal does not exist")
+                except ValueError:
+                    raise ValueError("Proposal does not exist")
             clip_image_features_ensemble = torch.cat(clip_image_features_ensemble, dim=0)
             kd_loss = F.l1_loss(region_embeddings_image, clip_image_features_ensemble) * self.kd_weight
             loss_bbox.update(kd_loss=kd_loss)
         bbox_results.update(loss_bbox=loss_bbox)
         return bbox_results
-    
-    def _mask_forward_train(self, x, sampling_results, bbox_feats, gt_masks,
-                            img_metas):
+
+    def _mask_forward_train(self, x, sampling_results, bbox_feats, gt_masks, img_metas):
         """Run forward function and calculate loss for mask head in
         training."""
         if not self.share_roi_extractor:
@@ -367,37 +408,24 @@ class StandardRoIHeadSigmoid(BaseRoIHead, BBoxTestMixin, MaskTestMixin):
             pos_inds = []
             device = bbox_feats.device
             for res in sampling_results:
-                pos_inds.append(
-                    torch.ones(
-                        res.pos_bboxes.shape[0],
-                        device=device,
-                        dtype=torch.bool))
-                pos_inds.append(
-                    torch.zeros(
-                        res.neg_bboxes.shape[0],
-                        device=device,
-                        dtype=torch.bool))
+                pos_inds.append(torch.ones(res.pos_bboxes.shape[0], device=device, dtype=torch.bool))
+                pos_inds.append(torch.zeros(res.neg_bboxes.shape[0], device=device, dtype=torch.bool))
             pos_inds = torch.cat(pos_inds)
 
-            mask_results = self._mask_forward(
-                x, pos_inds=pos_inds, bbox_feats=bbox_feats)
+            mask_results = self._mask_forward(x, pos_inds=pos_inds, bbox_feats=bbox_feats)
 
-        mask_targets = self.mask_head.get_targets(sampling_results, gt_masks,
-                                                  self.train_cfg)
+        mask_targets = self.mask_head.get_targets(sampling_results, gt_masks, self.train_cfg)
         pos_labels = torch.cat([res.pos_gt_labels for res in sampling_results])
-        loss_mask = self.mask_head.loss(mask_results['mask_pred'],
-                                        mask_targets, pos_labels)
+        loss_mask = self.mask_head.loss(mask_results["mask_pred"], mask_targets, pos_labels)
 
         mask_results.update(loss_mask=loss_mask, mask_targets=mask_targets)
         return mask_results
 
     def _mask_forward(self, x, rois=None, pos_inds=None, bbox_feats=None):
         """Mask head forward function used in both training and testing."""
-        assert ((rois is not None) ^
-                (pos_inds is not None and bbox_feats is not None))
+        assert (rois is not None) ^ (pos_inds is not None and bbox_feats is not None)
         if rois is not None:
-            mask_feats = self.mask_roi_extractor(
-                x[:self.mask_roi_extractor.num_inputs], rois)
+            mask_feats = self.mask_roi_extractor(x[: self.mask_roi_extractor.num_inputs], rois)
             if self.with_shared_head:
                 mask_feats = self.shared_head(mask_feats)
         else:
@@ -408,13 +436,7 @@ class StandardRoIHeadSigmoid(BaseRoIHead, BBoxTestMixin, MaskTestMixin):
         mask_results = dict(mask_pred=mask_pred, mask_feats=mask_feats)
         return mask_results
 
-    def simple_test_bboxes(self,
-                           x,
-                           img_metas,
-                           proposals,
-                           rcnn_test_cfg,
-                           rescale=False,
-                           **kwargs):
+    def simple_test_bboxes(self, x, img_metas, proposals, rcnn_test_cfg, rescale=False, **kwargs):
         """Test only det bboxes without augmentation.
 
         Args:
@@ -434,21 +456,19 @@ class StandardRoIHeadSigmoid(BaseRoIHead, BBoxTestMixin, MaskTestMixin):
                 The length of both lists should be equal to batch_size.
         """
         # Get origin input shape to support onnx dynamic input shape
-        img_shapes = tuple(meta['img_shape'] for meta in img_metas)
+        img_shapes = tuple(meta["img_shape"] for meta in img_metas)
         # img_norm_mean, img_norm_std = img_metas[0]['img_norm_cfg']['mean'], img_metas[0]['img_norm_cfg']['std']
-        scale_factors = tuple(meta['scale_factor'] for meta in img_metas)
+        scale_factors = tuple(meta["scale_factor"] for meta in img_metas)
         rois = bbox2roi(proposals)
         num_proposals_per_img = tuple(len(proposal) for proposal in proposals)
-        objectness = kwargs.get('objectness', None)
-            
+        objectness = kwargs.get("objectness", None)
+
         # Score for the first head
         bbox_results, region_embeddings = self._bbox_forward(x, rois)
         cls_score_text = region_embeddings @ self.prototype.T
-        
+
         cls_score_text = cls_score_text.sigmoid()
-        cls_score_text_full = cls_score_text.new_full(
-            (cls_score_text.size(0), self.num_classes), 1
-        )
+        cls_score_text_full = cls_score_text.new_full((cls_score_text.size(0), self.num_classes), 1)
         cls_score_text_full[:, self.base_label_ids] = cls_score_text
 
         # Score for the second head
@@ -463,18 +483,20 @@ class StandardRoIHeadSigmoid(BaseRoIHead, BBoxTestMixin, MaskTestMixin):
         # Ensemble two heads (default setting)
         if self.ensemble:
             cls_score = torch.where(
-                self.novel_index, cls_score_image**(1-self.beta) * cls_score_text_full**self.beta,
-                cls_score_text_full**(1-self.alpha) * cls_score_image**self.alpha)
+                self.novel_index,
+                cls_score_image ** (1 - self.beta) * cls_score_text_full**self.beta,
+                cls_score_text_full ** (1 - self.alpha) * cls_score_image**self.alpha,
+            )
         else:
             cls_score = cls_score_text_full
         # breakpoint()
         if objectness is not None:
             cls_score = (cls_score * objectness.unsqueeze(1)) ** 0.5
-            
+
         # add score for background class (compatible with mmdet nms)
         cls_score = torch.cat([cls_score, torch.zeros(cls_score.size(0), 1, device=self.device)], dim=1)
-        
-        bbox_pred = bbox_results['bbox_pred']
+
+        bbox_pred = bbox_results["bbox_pred"]
         num_proposals_per_img = tuple(len(p) for p in proposals)
         rois = rois.split(num_proposals_per_img, 0)
         cls_score = cls_score.split(num_proposals_per_img, 0)
@@ -485,11 +507,10 @@ class StandardRoIHeadSigmoid(BaseRoIHead, BBoxTestMixin, MaskTestMixin):
             if isinstance(bbox_pred, torch.Tensor):
                 bbox_pred = bbox_pred.split(num_proposals_per_img, 0)
             else:
-                bbox_pred = self.bbox_head.bbox_pred_split(
-                    bbox_pred, num_proposals_per_img)
+                bbox_pred = self.bbox_head.bbox_pred_split(bbox_pred, num_proposals_per_img)
         else:
             bbox_pred = (None,) * len(proposals)
-            
+
         # apply bbox post-processing to each image individually
         det_bboxes = []
         det_labels = []
@@ -501,41 +522,31 @@ class StandardRoIHeadSigmoid(BaseRoIHead, BBoxTestMixin, MaskTestMixin):
                 img_shapes[i],
                 scale_factors[i],
                 rescale=rescale,
-                cfg=rcnn_test_cfg)
+                cfg=rcnn_test_cfg,
+            )
             det_bboxes.append(det_bbox)
             det_labels.append(det_label)
-        
+
         return det_bboxes, det_labels
 
-    def simple_test(self,
-                    x,
-                    proposal_list,
-                    img_metas,
-                    proposals=None,
-                    rescale=False,
-                    **kwargs):
+    def simple_test(self, x, proposal_list, img_metas, proposals=None, rescale=False, **kwargs):
         """Test without augmentation."""
-        assert self.with_bbox, 'Bbox head must be implemented.'
+        assert self.with_bbox, "Bbox head must be implemented."
 
         det_bboxes, det_labels = self.simple_test_bboxes(
-            x, img_metas, proposal_list, self.test_cfg, rescale=rescale, **kwargs)
+            x, img_metas, proposal_list, self.test_cfg, rescale=rescale, **kwargs
+        )
         if torch.onnx.is_in_onnx_export():
             if self.with_mask:
-                segm_results = self.simple_test_mask(
-                    x, img_metas, det_bboxes, det_labels, rescale=rescale, **kwargs)
+                segm_results = self.simple_test_mask(x, img_metas, det_bboxes, det_labels, rescale=rescale, **kwargs)
                 return det_bboxes, det_labels, segm_results
             else:
                 return det_bboxes, det_labels
 
-        bbox_results = [
-            bbox2result(det_bboxes[i], det_labels[i], self.num_classes)
-            for i in range(len(det_bboxes))
-        ]
+        bbox_results = [bbox2result(det_bboxes[i], det_labels[i], self.num_classes) for i in range(len(det_bboxes))]
 
         if not self.with_mask:
             return bbox_results
         else:
-            segm_results = self.simple_test_mask(
-                x, img_metas, det_bboxes, det_labels, rescale=rescale)
+            segm_results = self.simple_test_mask(x, img_metas, det_bboxes, det_labels, rescale=rescale)
             return list(zip(bbox_results, segm_results))
-

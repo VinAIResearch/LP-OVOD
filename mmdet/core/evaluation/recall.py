@@ -1,14 +1,12 @@
-from collections.abc import Sequence
-
 import numpy as np
 from mmcv.utils import print_log
 from terminaltables import AsciiTable
 
+from collections.abc import Sequence
 from .bbox_overlaps import bbox_overlaps
 
 
 def _recalls(all_ious, proposal_nums, thrs):
-
     img_num = all_ious.shape[0]
     total_gt_num = sum([ious.shape[0] for ious in all_ious])
 
@@ -61,11 +59,7 @@ def set_recall_param(proposal_nums, iou_thrs):
     return _proposal_nums, _iou_thrs
 
 
-def eval_recalls(gts,
-                 proposals,
-                 proposal_nums=None,
-                 iou_thrs=0.5,
-                 logger=None):
+def eval_recalls(gts, proposals, proposal_nums=None, iou_thrs=0.5, logger=None):
     """Calculate recalls.
 
     Args:
@@ -106,12 +100,7 @@ def eval_recalls(gts,
     return recalls
 
 
-def print_recall_summary(recalls,
-                         proposal_nums,
-                         iou_thrs,
-                         row_idxs=None,
-                         col_idxs=None,
-                         logger=None):
+def print_recall_summary(recalls, proposal_nums, iou_thrs, row_idxs=None, col_idxs=None, logger=None):
     """Print recalls in a table.
 
     Args:
@@ -129,14 +118,14 @@ def print_recall_summary(recalls,
         row_idxs = np.arange(proposal_nums.size)
     if col_idxs is None:
         col_idxs = np.arange(iou_thrs.size)
-    row_header = [''] + iou_thrs[col_idxs].tolist()
+    row_header = [""] + iou_thrs[col_idxs].tolist()
     table_data = [row_header]
     for i, num in enumerate(proposal_nums[row_idxs]):
-        row = [f'{val:.3f}' for val in recalls[row_idxs[i], col_idxs].tolist()]
+        row = [f"{val:.3f}" for val in recalls[row_idxs[i], col_idxs].tolist()]
         row.insert(0, num)
         table_data.append(row)
     table = AsciiTable(table_data)
-    print_log('\n' + table.table, logger=logger)
+    print_log("\n" + table.table, logger=logger)
 
 
 def plot_num_recall(recalls, proposal_nums):
@@ -156,10 +145,11 @@ def plot_num_recall(recalls, proposal_nums):
         _recalls = recalls
 
     import matplotlib.pyplot as plt
+
     f = plt.figure()
     plt.plot([0] + _proposal_nums, [0] + _recalls)
-    plt.xlabel('Proposal num')
-    plt.ylabel('Recall')
+    plt.xlabel("Proposal num")
+    plt.ylabel("Recall")
     plt.axis([0, proposal_nums.max(), 0, 1])
     f.show()
 
@@ -181,9 +171,10 @@ def plot_iou_recall(recalls, iou_thrs):
         _recalls = recalls
 
     import matplotlib.pyplot as plt
+
     f = plt.figure()
-    plt.plot(_iou_thrs + [1.0], _recalls + [0.])
-    plt.xlabel('IoU')
-    plt.ylabel('Recall')
+    plt.plot(_iou_thrs + [1.0], _recalls + [0.0])
+    plt.xlabel("IoU")
+    plt.ylabel("Recall")
     plt.axis([iou_thrs.min(), 1, 0, 1])
     f.show()

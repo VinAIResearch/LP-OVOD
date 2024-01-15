@@ -1,21 +1,78 @@
 # Modified from [ViLD](https://github.com/tensorflow/tpu/tree/master/models/official/detection/projects/vild)
 
-import os
-
 import torch
-import torch.nn as nn
+
 from clip import clip
 from tqdm import tqdm
 
-COCO_OVD_ALL_CLS = ['person', 'bicycle', 'car', 'motorcycle', 'airplane', \
-    'bus', 'train', 'truck', 'boat', 'bench', 'bird', 'cat', 'dog', 'horse', \
-    'sheep', 'cow', 'elephant', 'bear', 'zebra', 'giraffe', 'backpack', 'umbrella', \
-    'handbag', 'tie', 'suitcase', 'frisbee', 'skis', 'snowboard', 'kite', 'skateboard', \
-    'surfboard', 'bottle', 'cup', 'fork', 'knife', 'spoon', 'bowl', 'banana', \
-    'apple', 'sandwich', 'orange', 'broccoli', 'carrot', 'pizza', 'donut', 'cake', \
-    'chair', 'couch', 'bed', 'toilet', 'tv', 'laptop', 'mouse', 'remote', 'keyboard', \
-    'microwave', 'oven', 'toaster', 'sink', 'refrigerator', 'book', 'clock', 'vase', \
-    'scissors', 'toothbrush']
+
+COCO_OVD_ALL_CLS = [
+    "person",
+    "bicycle",
+    "car",
+    "motorcycle",
+    "airplane",
+    "bus",
+    "train",
+    "truck",
+    "boat",
+    "bench",
+    "bird",
+    "cat",
+    "dog",
+    "horse",
+    "sheep",
+    "cow",
+    "elephant",
+    "bear",
+    "zebra",
+    "giraffe",
+    "backpack",
+    "umbrella",
+    "handbag",
+    "tie",
+    "suitcase",
+    "frisbee",
+    "skis",
+    "snowboard",
+    "kite",
+    "skateboard",
+    "surfboard",
+    "bottle",
+    "cup",
+    "fork",
+    "knife",
+    "spoon",
+    "bowl",
+    "banana",
+    "apple",
+    "sandwich",
+    "orange",
+    "broccoli",
+    "carrot",
+    "pizza",
+    "donut",
+    "cake",
+    "chair",
+    "couch",
+    "bed",
+    "toilet",
+    "tv",
+    "laptop",
+    "mouse",
+    "remote",
+    "keyboard",
+    "microwave",
+    "oven",
+    "toaster",
+    "sink",
+    "refrigerator",
+    "book",
+    "clock",
+    "vase",
+    "scissors",
+    "toothbrush",
+]
 
 
 def article(name):
@@ -29,6 +86,7 @@ def processed_name(name, rm_dot=False):
     if rm_dot:
         res = res.rstrip(".")
     return res
+
 
 class_only = ["{}"]
 single_template = ["a photo of a {}."]
@@ -109,29 +167,27 @@ def build_text_embedding_coco():
     model, preprocess = clip.load("ViT-B/32", download_root="weights")
     with torch.no_grad():
         all_text_embeddings = []
-        print('Building text embeddings...')
+        print("Building text embeddings...")
         for category in tqdm(categories):
             texts = [
-                template.format(processed_name(category, rm_dot=True),
-                                article=article(category))
-                for template in templates]
-            texts = [
-                'This is ' + text if text.startswith('a') or text.startswith('the') else text 
-                for text in texts
-                ]
+                template.format(processed_name(category, rm_dot=True), article=article(category))
+                for template in templates
+            ]
+            texts = ["This is " + text if text.startswith("a") or text.startswith("the") else text for text in texts]
             texts = [category]
-            texts = clip.tokenize(texts) #tokenize
+            texts = clip.tokenize(texts)  # tokenize
             if run_on_gpu:
                 texts = texts.cuda()
-            text_embeddings = model.encode_text(texts) #embed with text encoder
+            text_embeddings = model.encode_text(texts)  # embed with text encoder
             text_embeddings /= text_embeddings.norm(dim=-1, keepdim=True)
             text_embedding = text_embeddings.mean(dim=0)
             text_embedding /= text_embedding.norm()
             all_text_embeddings.append(text_embedding)
         all_text_embeddings = torch.stack(all_text_embeddings, dim=1)
-        print(f'Finished, get text embeddings of size {all_text_embeddings.T.size()}')
-        print('Saving...')
+        print(f"Finished, get text embeddings of size {all_text_embeddings.T.size()}")
+        print("Saving...")
         torch.save(all_text_embeddings.T.cpu(), "ovd_coco_text_embedding.pth")
 
-if __name__ == '__main__':
+
+if __name__ == "__main__":
     build_text_embedding_coco()

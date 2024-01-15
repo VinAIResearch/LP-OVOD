@@ -29,17 +29,19 @@ class ScoreHLRSampler(BaseSampler):
             considered as valid bbox.
     """
 
-    def __init__(self,
-                 num,
-                 pos_fraction,
-                 context,
-                 neg_pos_ub=-1,
-                 add_gt_as_proposals=True,
-                 k=0.5,
-                 bias=0,
-                 score_thr=0.05,
-                 iou_thr=0.5,
-                 **kwargs):
+    def __init__(
+        self,
+        num,
+        pos_fraction,
+        context,
+        neg_pos_ub=-1,
+        add_gt_as_proposals=True,
+        k=0.5,
+        bias=0,
+        score_thr=0.05,
+        iou_thr=0.5,
+        **kwargs
+    ):
         super().__init__(num, pos_fraction, neg_pos_ub, add_gt_as_proposals)
         self.k = k
         self.bias = bias
@@ -47,15 +49,14 @@ class ScoreHLRSampler(BaseSampler):
         self.iou_thr = iou_thr
         self.context = context
         # context of cascade detectors is a list, so distinguish them here.
-        if not hasattr(context, 'num_stages'):
+        if not hasattr(context, "num_stages"):
             self.bbox_roi_extractor = context.bbox_roi_extractor
             self.bbox_head = context.bbox_head
             self.with_shared_head = context.with_shared_head
             if self.with_shared_head:
                 self.shared_head = context.shared_head
         else:
-            self.bbox_roi_extractor = context.bbox_roi_extractor[
-                context.current_stage]
+            self.bbox_roi_extractor = context.bbox_roi_extractor[context.current_stage]
             self.bbox_head = context.bbox_head[context.current_stage]
 
     @staticmethod
@@ -80,7 +81,7 @@ class ScoreHLRSampler(BaseSampler):
             if torch.cuda.is_available():
                 device = torch.cuda.current_device()
             else:
-                device = 'cpu'
+                device = "cpu"
             gallery = torch.tensor(gallery, dtype=torch.long, device=device)
         perm = torch.randperm(gallery.numel(), device=gallery.device)[:num]
         rand_inds = gallery[perm]
@@ -96,13 +97,7 @@ class ScoreHLRSampler(BaseSampler):
         else:
             return self.random_choice(pos_inds, num_expected)
 
-    def _sample_neg(self,
-                    assign_result,
-                    num_expected,
-                    bboxes,
-                    feats=None,
-                    img_meta=None,
-                    **kwargs):
+    def _sample_neg(self, assign_result, num_expected, bboxes, feats=None, img_meta=None, **kwargs):
         """Sample negative samples.
 
         Score-HLR sampler is done in the following steps:
@@ -133,19 +128,18 @@ class ScoreHLRSampler(BaseSampler):
             neg_bboxes = bboxes[neg_inds]
             neg_rois = bbox2roi([neg_bboxes])
             bbox_result = self.context._bbox_forward(feats, neg_rois)
-            cls_score, bbox_pred = bbox_result['cls_score'], bbox_result[
-                'bbox_pred']
+            cls_score, bbox_pred = bbox_result["cls_score"], bbox_result["bbox_pred"]
 
             ori_loss = self.bbox_head.loss(
                 cls_score=cls_score,
                 bbox_pred=None,
                 rois=None,
-                labels=neg_inds.new_full((num_neg, ),
-                                         self.bbox_head.num_classes),
+                labels=neg_inds.new_full((num_neg,), self.bbox_head.num_classes),
                 label_weights=cls_score.new_ones(num_neg),
                 bbox_targets=None,
                 bbox_weights=None,
-                reduction_override='none')['loss_cls']
+                reduction_override="none",
+            )["loss_cls"]
 
             # filter out samples with the max score lower than score_thr
             max_score, argmax_score = cls_score.softmax(-1)[:, :-1].max(-1)
@@ -164,14 +158,10 @@ class ScoreHLRSampler(BaseSampler):
                 valid_bbox_pred = bbox_pred[valid_inds]
 
                 # valid_bbox_pred shape: [num_valid, #num_classes, 4]
-                valid_bbox_pred = valid_bbox_pred.view(
-                    valid_bbox_pred.size(0), -1, 4)
-                selected_bbox_pred = valid_bbox_pred[range(num_valid),
-                                                     valid_argmax_score]
-                pred_bboxes = self.bbox_head.bbox_coder.decode(
-                    valid_rois[:, 1:], selected_bbox_pred)
-                pred_bboxes_with_score = torch.cat(
-                    [pred_bboxes, valid_max_score[:, None]], -1)
+                valid_bbox_pred = valid_bbox_pred.view(valid_bbox_pred.size(0), -1, 4)
+                selected_bbox_pred = valid_bbox_pred[range(num_valid), valid_argmax_score]
+                pred_bboxes = self.bbox_head.bbox_coder.decode(valid_rois[:, 1:], selected_bbox_pred)
+                pred_bboxes_with_score = torch.cat([pred_bboxes, valid_max_score[:, None]], -1)
                 group = nms_match(pred_bboxes_with_score, self.iou_thr)
 
                 # imp: importance
@@ -187,21 +177,17 @@ class ScoreHLRSampler(BaseSampler):
 
                 if num_rand > 0:
                     rand_inds = torch.randperm(num_invalid)[:num_rand]
-                    select_inds = torch.cat(
-                        [valid_inds[hlr_inds], invalid_inds[rand_inds]])
+                    select_inds = torch.cat([valid_inds[hlr_inds], invalid_inds[rand_inds]])
                 else:
                     select_inds = valid_inds[hlr_inds]
 
                 neg_label_weights = cls_score.new_ones(num_expected)
 
                 up_bound = max(num_expected, num_valid)
-                imp_weights = (up_bound -
-                               imp_rank[hlr_inds].float()) / up_bound
+                imp_weights = (up_bound - imp_rank[hlr_inds].float()) / up_bound
                 neg_label_weights[:num_hlr] = imp_weights
                 neg_label_weights[num_hlr:] = imp_weights.min()
-                neg_label_weights = (self.bias +
-                                     (1 - self.bias) * neg_label_weights).pow(
-                                         self.k)
+                neg_label_weights = (self.bias + (1 - self.bias) * neg_label_weights).pow(self.k)
                 ori_selected_loss = ori_loss[select_inds]
                 new_loss = ori_selected_loss * neg_label_weights
                 norm_ratio = ori_selected_loss.sum() / new_loss.sum()
@@ -212,13 +198,7 @@ class ScoreHLRSampler(BaseSampler):
 
             return neg_inds[select_inds], neg_label_weights
 
-    def sample(self,
-               assign_result,
-               bboxes,
-               gt_bboxes,
-               gt_labels=None,
-               img_meta=None,
-               **kwargs):
+    def sample(self, assign_result, bboxes, gt_bboxes, gt_labels=None, img_meta=None, **kwargs):
         """Sample positive and negative bboxes.
 
         This is a simple implementation of bbox sampling given candidates,
@@ -236,7 +216,7 @@ class ScoreHLRSampler(BaseSampler):
         """
         bboxes = bboxes[:, :4]
 
-        gt_flags = bboxes.new_zeros((bboxes.shape[0], ), dtype=torch.uint8)
+        gt_flags = bboxes.new_zeros((bboxes.shape[0],), dtype=torch.uint8)
         if self.add_gt_as_proposals:
             bboxes = torch.cat([gt_bboxes, bboxes], dim=0)
             assign_result.add_gt_(gt_labels)
@@ -244,8 +224,7 @@ class ScoreHLRSampler(BaseSampler):
             gt_flags = torch.cat([gt_ones, gt_flags])
 
         num_expected_pos = int(self.num * self.pos_fraction)
-        pos_inds = self.pos_sampler._sample_pos(
-            assign_result, num_expected_pos, bboxes=bboxes, **kwargs)
+        pos_inds = self.pos_sampler._sample_pos(assign_result, num_expected_pos, bboxes=bboxes, **kwargs)
         num_sampled_pos = pos_inds.numel()
         num_expected_neg = self.num - num_sampled_pos
         if self.neg_pos_ub >= 0:
@@ -254,11 +233,7 @@ class ScoreHLRSampler(BaseSampler):
             if num_expected_neg > neg_upper_bound:
                 num_expected_neg = neg_upper_bound
         neg_inds, neg_label_weights = self.neg_sampler._sample_neg(
-            assign_result,
-            num_expected_neg,
-            bboxes,
-            img_meta=img_meta,
-            **kwargs)
+            assign_result, num_expected_neg, bboxes, img_meta=img_meta, **kwargs
+        )
 
-        return SamplingResult(pos_inds, neg_inds, bboxes, gt_bboxes,
-                              assign_result, gt_flags), neg_label_weights
+        return SamplingResult(pos_inds, neg_inds, bboxes, gt_bboxes, assign_result, gt_flags), neg_label_weights

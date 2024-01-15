@@ -2,25 +2,18 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
-from mmdet.core import bbox2result, bbox2roi, build_assigner, build_sampler
-from ..builder import HEADS, build_head, build_roi_extractor
-from .standard_roi_head_sigmoid import StandardRoIHeadSigmoid
-from .class_name import *
-from mmdet.core import (bbox2roi, bbox_mapping, merge_aug_bboxes,
-                        merge_aug_masks, multiclass_nms)
-from .class_name import coco_base_label_ids, coco_novel_label_ids, COCO_OVD_ALL_CLS
 from fvcore.nn import sigmoid_focal_loss_jit
-import math
+from mmdet.core import bbox2roi
+from ..builder import HEADS
+from .class_name import coco_base_label_ids, coco_novel_label_ids
+from .standard_roi_head_sigmoid import StandardRoIHeadSigmoid
 
 
 @HEADS.register_module()
 class StandardRoIHeadSigmoidFinetune(StandardRoIHeadSigmoid):
     """Simplest base roi head including one bbox head and one mask head."""
 
-    def __init__(self,
-                 test_temp=0.07,
-                 neg_pos_ub=20,
-                 **kwargs):
+    def __init__(self, test_temp=0.07, neg_pos_ub=20, **kwargs):
         super(StandardRoIHeadSigmoidFinetune, self).__init__(**kwargs)
         for parameter in self.parameters():
             parameter.requires_grad_(False)
@@ -33,14 +26,7 @@ class StandardRoIHeadSigmoidFinetune(StandardRoIHeadSigmoid):
         if self.bbox_sampler is not None:
             self.bbox_sampler.neg_pos_ub = neg_pos_ub
 
-    def forward_train(self,
-                      x,
-                      img_metas,
-                      proposal_list,
-                      gt_bboxes,
-                      gt_labels,
-                      gt_bboxes_ignore=None,
-                      gt_masks=None):
+    def forward_train(self, x, img_metas, proposal_list, gt_bboxes, gt_labels, gt_bboxes_ignore=None, gt_masks=None):
         """
         Args:
             x (list[Tensor]): list of multi-level img features.
@@ -70,23 +56,22 @@ class StandardRoIHeadSigmoidFinetune(StandardRoIHeadSigmoid):
             sampling_results = []
             for i in range(num_imgs):
                 assign_result = self.bbox_assigner.assign(
-                    proposal_list[i], gt_bboxes[i], gt_bboxes_ignore[i],
-                    gt_labels[i])
+                    proposal_list[i], gt_bboxes[i], gt_bboxes_ignore[i], gt_labels[i]
+                )
                 sampling_result = self.bbox_sampler.sample(
                     assign_result,
                     proposal_list[i],
                     gt_bboxes[i],
                     gt_labels[i],
-                    feats=[lvl_feat[i][None] for lvl_feat in x])
+                    feats=[lvl_feat[i][None] for lvl_feat in x],
+                )
                 sampling_results.append(sampling_result)
 
         losses = dict()
         # bbox head forward and loss
         if self.with_bbox:
-            bbox_results = self._bbox_forward_train(x, sampling_results,
-                                                    gt_bboxes, gt_labels,
-                                                    img_metas)
-            losses.update(bbox_results['loss_bbox'])
+            bbox_results = self._bbox_forward_train(x, sampling_results, gt_bboxes, gt_labels, img_metas)
+            losses.update(bbox_results["loss_bbox"])
 
         return losses
 
@@ -98,36 +83,27 @@ class StandardRoIHeadSigmoidFinetune(StandardRoIHeadSigmoid):
         bbox_results, region_embeddings = self._bbox_forward(x, rois)
 
         cls_score_text = region_embeddings @ self.prototype_novel.T
-        bbox_targets = self.bbox_head.get_targets(sampling_results, gt_bboxes,
-                                                  gt_labels, self.train_cfg)
+        bbox_targets = self.bbox_head.get_targets(sampling_results, gt_bboxes, gt_labels, self.train_cfg)
         labels, _, _, _ = bbox_targets
         labels = labels.cpu().numpy()
         labels = torch.tensor([self.mapping_label[label] for label in labels]).long().to(self.device)
 
         bin_labels = labels.new_full((labels.size(0), len(coco_novel_label_ids)), 0)
-        inds = torch.nonzero(
-            (labels >= 0) & (labels < len(coco_novel_label_ids)), as_tuple=False).squeeze()
+        inds = torch.nonzero((labels >= 0) & (labels < len(coco_novel_label_ids)), as_tuple=False).squeeze()
         if inds.numel() > 0:
             bin_labels[inds, labels[inds]] = 1
 
         num_pos_bboxes = sum([res.pos_bboxes.size(0) for res in sampling_results])
-        cls_loss = sigmoid_focal_loss_jit(
-            cls_score_text, bin_labels,
-            reduction="sum",
-            gamma=2, alpha=0.25) / num_pos_bboxes
+        cls_loss = (
+            sigmoid_focal_loss_jit(cls_score_text, bin_labels, reduction="sum", gamma=2, alpha=0.25) / num_pos_bboxes
+        )
         loss_bbox = dict()
-        
+
         loss_bbox.update(cls_loss=cls_loss)
         bbox_results.update(loss_bbox=loss_bbox)
         return bbox_results
 
-    def simple_test_bboxes(self,
-                           x,
-                           img_metas,
-                           proposals,
-                           rcnn_test_cfg,
-                           rescale=False,
-                           **kwargs):
+    def simple_test_bboxes(self, x, img_metas, proposals, rcnn_test_cfg, rescale=False, **kwargs):
         """Test only det bboxes without augmentation.
 
         Args:
@@ -147,11 +123,11 @@ class StandardRoIHeadSigmoidFinetune(StandardRoIHeadSigmoid):
                 The length of both lists should be equal to batch_size.
         """
         # Get origin input shape to support onnx dynamic input shape
-        img_shapes = tuple(meta['img_shape'] for meta in img_metas)
-        scale_factors = tuple(meta['scale_factor'] for meta in img_metas)
+        img_shapes = tuple(meta["img_shape"] for meta in img_metas)
+        scale_factors = tuple(meta["scale_factor"] for meta in img_metas)
         rois = bbox2roi(proposals)
         num_proposals_per_img = tuple(len(proposal) for proposal in proposals)
-        objectness = kwargs.get('objectness', None)
+        objectness = kwargs.get("objectness", None)
 
         # Score for the first head
         bbox_results, region_embeddings = self._bbox_forward(x, rois)
@@ -170,12 +146,14 @@ class StandardRoIHeadSigmoidFinetune(StandardRoIHeadSigmoid):
             cls_score_image = region_embeddings_image @ self.text_features_for_classes.T.float()
             cls_score_image = (cls_score_image / self.temperature_test).float()
             cls_score_image = F.softmax(cls_score_image, dim=1)
-            
+
         # Ensemble two heads (default setting)
         if self.ensemble:
             cls_score = torch.where(
-                self.novel_index, cls_score_image**(1-self.beta) * cls_score_text_full**self.beta,
-                cls_score_text_full**(1-self.alpha) * cls_score_image**self.alpha)
+                self.novel_index,
+                cls_score_image ** (1 - self.beta) * cls_score_text_full**self.beta,
+                cls_score_text_full ** (1 - self.alpha) * cls_score_image**self.alpha,
+            )
         else:
             cls_score = cls_score_text_full
 
@@ -185,7 +163,7 @@ class StandardRoIHeadSigmoidFinetune(StandardRoIHeadSigmoid):
         # add score for background class (compatible with mmdet nms)
         cls_score = torch.cat([cls_score, torch.zeros(cls_score.size(0), 1, device=self.device)], dim=1)
 
-        bbox_pred = bbox_results['bbox_pred']
+        bbox_pred = bbox_results["bbox_pred"]
         num_proposals_per_img = tuple(len(p) for p in proposals)
         rois = rois.split(num_proposals_per_img, 0)
         cls_score = cls_score.split(num_proposals_per_img, 0)
@@ -196,8 +174,7 @@ class StandardRoIHeadSigmoidFinetune(StandardRoIHeadSigmoid):
             if isinstance(bbox_pred, torch.Tensor):
                 bbox_pred = bbox_pred.split(num_proposals_per_img, 0)
             else:
-                bbox_pred = self.bbox_head.bbox_pred_split(
-                    bbox_pred, num_proposals_per_img)
+                bbox_pred = self.bbox_head.bbox_pred_split(bbox_pred, num_proposals_per_img)
         else:
             bbox_pred = (None,) * len(proposals)
 
@@ -212,7 +189,8 @@ class StandardRoIHeadSigmoidFinetune(StandardRoIHeadSigmoid):
                 img_shapes[i],
                 scale_factors[i],
                 rescale=rescale,
-                cfg=rcnn_test_cfg)
+                cfg=rcnn_test_cfg,
+            )
             det_bboxes.append(det_bbox)
             det_labels.append(det_label)
 

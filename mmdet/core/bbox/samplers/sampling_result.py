@@ -22,8 +22,7 @@ class SamplingResult(util_mixins.NiceRepr):
         })>
     """
 
-    def __init__(self, pos_inds, neg_inds, bboxes, gt_bboxes, assign_result,
-                 gt_flags):
+    def __init__(self, pos_inds, neg_inds, bboxes, gt_bboxes, assign_result, gt_flags):
         self.pos_inds = pos_inds
         self.neg_inds = neg_inds
         self.pos_bboxes = bboxes[pos_inds]
@@ -70,23 +69,23 @@ class SamplingResult(util_mixins.NiceRepr):
 
     def __nice__(self):
         data = self.info.copy()
-        data['pos_bboxes'] = data.pop('pos_bboxes').shape
-        data['neg_bboxes'] = data.pop('neg_bboxes').shape
+        data["pos_bboxes"] = data.pop("pos_bboxes").shape
+        data["neg_bboxes"] = data.pop("neg_bboxes").shape
         parts = [f"'{k}': {v!r}" for k, v in sorted(data.items())]
-        body = '    ' + ',\n    '.join(parts)
-        return '{\n' + body + '\n}'
+        body = "    " + ",\n    ".join(parts)
+        return "{\n" + body + "\n}"
 
     @property
     def info(self):
         """Returns a dictionary of info about the object."""
         return {
-            'pos_inds': self.pos_inds,
-            'neg_inds': self.neg_inds,
-            'pos_bboxes': self.pos_bboxes,
-            'neg_bboxes': self.neg_bboxes,
-            'pos_is_gt': self.pos_is_gt,
-            'num_gts': self.num_gts,
-            'pos_assigned_gt_inds': self.pos_assigned_gt_inds,
+            "pos_inds": self.pos_inds,
+            "neg_inds": self.neg_inds,
+            "pos_bboxes": self.pos_bboxes,
+            "neg_bboxes": self.neg_bboxes,
+            "pos_is_gt": self.pos_is_gt,
+            "num_gts": self.num_gts,
+            "pos_assigned_gt_inds": self.pos_assigned_gt_inds,
         }
 
     @classmethod
@@ -111,9 +110,10 @@ class SamplingResult(util_mixins.NiceRepr):
             >>> self = SamplingResult.random()
             >>> print(self.__dict__)
         """
-        from mmdet.core.bbox.samplers.random_sampler import RandomSampler
-        from mmdet.core.bbox.assigners.assign_result import AssignResult
         from mmdet.core.bbox import demodata
+        from mmdet.core.bbox.assigners.assign_result import AssignResult
+        from mmdet.core.bbox.samplers.random_sampler import RandomSampler
+
         rng = demodata.ensure_rng(rng)
 
         # make probabalistic?
@@ -143,10 +143,7 @@ class SamplingResult(util_mixins.NiceRepr):
             add_gt_as_proposals = True  # make probabalistic?
 
         sampler = RandomSampler(
-            num,
-            pos_fraction,
-            neg_pos_ub=neg_pos_ub,
-            add_gt_as_proposals=add_gt_as_proposals,
-            rng=rng)
+            num, pos_fraction, neg_pos_ub=neg_pos_ub, add_gt_as_proposals=add_gt_as_proposals, rng=rng
+        )
         self = sampler.sample(assign_result, bboxes, gt_bboxes, gt_labels)
         return self

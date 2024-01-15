@@ -1,7 +1,8 @@
 from mmcv.utils import Registry, build_from_cfg
 
-TRANSFORMER = Registry('Transformer')
-POSITIONAL_ENCODING = Registry('Position encoding')
+
+TRANSFORMER = Registry("Transformer")
+POSITIONAL_ENCODING = Registry("Position encoding")
 
 
 def build_transformer(cfg, default_args=None):

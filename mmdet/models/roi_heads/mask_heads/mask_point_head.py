@@ -34,18 +34,19 @@ class MaskPointHead(nn.Module):
             loss_weight=1.0).
     """
 
-    def __init__(self,
-                 num_classes,
-                 num_fcs=3,
-                 in_channels=256,
-                 fc_channels=256,
-                 class_agnostic=False,
-                 coarse_pred_each_layer=True,
-                 conv_cfg=dict(type='Conv1d'),
-                 norm_cfg=None,
-                 act_cfg=dict(type='ReLU'),
-                 loss_point=dict(
-                     type='CrossEntropyLoss', use_mask=True, loss_weight=1.0)):
+    def __init__(
+        self,
+        num_classes,
+        num_fcs=3,
+        in_channels=256,
+        fc_channels=256,
+        class_agnostic=False,
+        coarse_pred_each_layer=True,
+        conv_cfg=dict(type="Conv1d"),
+        norm_cfg=None,
+        act_cfg=dict(type="ReLU"),
+        loss_point=dict(type="CrossEntropyLoss", use_mask=True, loss_weight=1.0),
+    ):
         super().__init__()
         self.num_fcs = num_fcs
         self.in_channels = in_channels
@@ -68,14 +69,14 @@ class MaskPointHead(nn.Module):
                 padding=0,
                 conv_cfg=conv_cfg,
                 norm_cfg=norm_cfg,
-                act_cfg=act_cfg)
+                act_cfg=act_cfg,
+            )
             self.fcs.append(fc)
             fc_in_channels = fc_channels
             fc_in_channels += num_classes if self.coarse_pred_each_layer else 0
 
         out_channels = 1 if self.class_agnostic else self.num_classes
-        self.fc_logits = nn.Conv1d(
-            fc_in_channels, out_channels, kernel_size=1, stride=1, padding=0)
+        self.fc_logits = nn.Conv1d(fc_in_channels, out_channels, kernel_size=1, stride=1, padding=0)
 
     def init_weights(self):
         """Initialize last classification layer of MaskPointHead, conv layers
@@ -103,8 +104,7 @@ class MaskPointHead(nn.Module):
                 x = torch.cat((x, coarse_feats), dim=1)
         return self.fc_logits(x)
 
-    def get_targets(self, rois, rel_roi_points, sampling_results, gt_masks,
-                    cfg):
+    def get_targets(self, rois, rel_roi_points, sampling_results, gt_masks, cfg):
         """Get training targets of MaskPointHead for all images.
 
         Args:
@@ -125,17 +125,15 @@ class MaskPointHead(nn.Module):
         rois_list = []
         rel_roi_points_list = []
         for batch_ind in range(num_imgs):
-            inds = (rois[:, 0] == batch_ind)
+            inds = rois[:, 0] == batch_ind
             rois_list.append(rois[inds])
             rel_roi_points_list.append(rel_roi_points[inds])
-        pos_assigned_gt_inds_list = [
-            res.pos_assigned_gt_inds for res in sampling_results
-        ]
+        pos_assigned_gt_inds_list = [res.pos_assigned_gt_inds for res in sampling_results]
         cfg_list = [cfg for _ in range(num_imgs)]
 
-        point_targets = map(self._get_target_single, rois_list,
-                            rel_roi_points_list, pos_assigned_gt_inds_list,
-                            gt_masks, cfg_list)
+        point_targets = map(
+            self._get_target_single, rois_list, rel_roi_points_list, pos_assigned_gt_inds_list, gt_masks, cfg_list
+        )
         point_targets = list(point_targets)
 
         if len(point_targets) > 0:
@@ -143,20 +141,15 @@ class MaskPointHead(nn.Module):
 
         return point_targets
 
-    def _get_target_single(self, rois, rel_roi_points, pos_assigned_gt_inds,
-                           gt_masks, cfg):
+    def _get_target_single(self, rois, rel_roi_points, pos_assigned_gt_inds, gt_masks, cfg):
         """Get training target of MaskPointHead for each image."""
         num_pos = rois.size(0)
         num_points = cfg.num_points
         if num_pos > 0:
-            gt_masks_th = (
-                gt_masks.to_tensor(rois.dtype, rois.device).index_select(
-                    0, pos_assigned_gt_inds))
+            gt_masks_th = gt_masks.to_tensor(rois.dtype, rois.device).index_select(0, pos_assigned_gt_inds)
             gt_masks_th = gt_masks_th.unsqueeze(1)
-            rel_img_points = rel_roi_point_to_rel_img_point(
-                rois, rel_roi_points, gt_masks_th.shape[2:])
-            point_targets = point_sample(gt_masks_th,
-                                         rel_img_points).squeeze(1)
+            rel_img_points = rel_roi_point_to_rel_img_point(rois, rel_roi_points, gt_masks_th.shape[2:])
+            point_targets = point_sample(gt_masks_th, rel_img_points).squeeze(1)
         else:
             point_targets = rois.new_zeros((0, num_points))
         return point_targets
@@ -177,11 +170,10 @@ class MaskPointHead(nn.Module):
 
         loss = dict()
         if self.class_agnostic:
-            loss_point = self.loss_point(point_pred, point_targets,
-                                         torch.zeros_like(labels))
+            loss_point = self.loss_point(point_pred, point_targets, torch.zeros_like(labels))
         else:
             loss_point = self.loss_point(point_pred, point_targets, labels)
-        loss['loss_point'] = loss_point
+        loss["loss_point"] = loss_point
         return loss
 
     def _get_uncertainty(self, mask_pred, labels):
@@ -236,8 +228,7 @@ class MaskPointHead(nn.Module):
         assert 0 <= importance_sample_ratio <= 1
         batch_size = mask_pred.shape[0]
         num_sampled = int(num_points * oversample_ratio)
-        point_coords = torch.rand(
-            batch_size, num_sampled, 2, device=mask_pred.device)
+        point_coords = torch.rand(batch_size, num_sampled, 2, device=mask_pred.device)
         point_logits = point_sample(mask_pred, point_coords)
         # It is crucial to calculate uncertainty based on the sampled
         # prediction value for the points. Calculating uncertainties of the
@@ -251,16 +242,12 @@ class MaskPointHead(nn.Module):
         point_uncertainties = self._get_uncertainty(point_logits, labels)
         num_uncertain_points = int(importance_sample_ratio * num_points)
         num_random_points = num_points - num_uncertain_points
-        idx = torch.topk(
-            point_uncertainties[:, 0, :], k=num_uncertain_points, dim=1)[1]
-        shift = num_sampled * torch.arange(
-            batch_size, dtype=torch.long, device=mask_pred.device)
+        idx = torch.topk(point_uncertainties[:, 0, :], k=num_uncertain_points, dim=1)[1]
+        shift = num_sampled * torch.arange(batch_size, dtype=torch.long, device=mask_pred.device)
         idx += shift[:, None]
-        point_coords = point_coords.view(-1, 2)[idx.view(-1), :].view(
-            batch_size, num_uncertain_points, 2)
+        point_coords = point_coords.view(-1, 2)[idx.view(-1), :].view(batch_size, num_uncertain_points, 2)
         if num_random_points > 0:
-            rand_roi_coords = torch.rand(
-                batch_size, num_random_points, 2, device=mask_pred.device)
+            rand_roi_coords = torch.rand(batch_size, num_random_points, 2, device=mask_pred.device)
             point_coords = torch.cat((point_coords, rand_roi_coords), dim=1)
         return point_coords
 
@@ -288,13 +275,10 @@ class MaskPointHead(nn.Module):
         h_step = 1.0 / mask_height
         w_step = 1.0 / mask_width
 
-        uncertainty_map = uncertainty_map.view(num_rois,
-                                               mask_height * mask_width)
+        uncertainty_map = uncertainty_map.view(num_rois, mask_height * mask_width)
         num_points = min(mask_height * mask_width, num_points)
         point_indices = uncertainty_map.topk(num_points, dim=1)[1]
         point_coords = uncertainty_map.new_zeros(num_rois, num_points, 2)
-        point_coords[:, :, 0] = w_step / 2.0 + (point_indices %
-                                                mask_width).float() * w_step
-        point_coords[:, :, 1] = h_step / 2.0 + (point_indices //
-                                                mask_width).float() * h_step
+        point_coords[:, :, 0] = w_step / 2.0 + (point_indices % mask_width).float() * w_step
+        point_coords[:, :, 1] = h_step / 2.0 + (point_indices // mask_width).float() * h_step
         return point_indices, point_coords

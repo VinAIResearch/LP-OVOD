@@ -1,7 +1,6 @@
-import collections
-
 from mmcv.utils import build_from_cfg
 
+import collections
 from ..builder import PIPELINES
 
 
@@ -24,7 +23,7 @@ class Compose(object):
             elif callable(transform):
                 self.transforms.append(transform)
             else:
-                raise TypeError('transform must be callable or a dict')
+                raise TypeError("transform must be callable or a dict")
 
     def __call__(self, data):
         """Call function to apply transforms sequentially.
@@ -43,9 +42,9 @@ class Compose(object):
         return data
 
     def __repr__(self):
-        format_string = self.__class__.__name__ + '('
+        format_string = self.__class__.__name__ + "("
         for t in self.transforms:
-            format_string += '\n'
-            format_string += f'    {t}'
-        format_string += '\n)'
+            format_string += "\n"
+            format_string += f"    {t}"
+        format_string += "\n)"
         return format_string

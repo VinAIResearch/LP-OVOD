@@ -21,25 +21,21 @@ class GenericRoIExtractor(BaseRoIExtractor):
             as :class:`BaseRoIExtractor`.
     """
 
-    def __init__(self,
-                 aggregation='sum',
-                 pre_cfg=None,
-                 post_cfg=None,
-                 **kwargs):
+    def __init__(self, aggregation="sum", pre_cfg=None, post_cfg=None, **kwargs):
         super(GenericRoIExtractor, self).__init__(**kwargs)
 
-        assert aggregation in ['sum', 'concat']
+        assert aggregation in ["sum", "concat"]
 
         self.aggregation = aggregation
         self.with_post = post_cfg is not None
         self.with_pre = pre_cfg is not None
         # build pre/post processing modules
         if self.with_post:
-            self.post_module = build_plugin_layer(post_cfg, '_post_module')[1]
+            self.post_module = build_plugin_layer(post_cfg, "_post_module")[1]
         if self.with_pre:
-            self.pre_module = build_plugin_layer(pre_cfg, '_pre_module')[1]
+            self.pre_module = build_plugin_layer(pre_cfg, "_pre_module")[1]
 
-    @force_fp32(apply_to=('feats', ), out_fp16=True)
+    @force_fp32(apply_to=("feats",), out_fp16=True)
     def forward(self, feats, rois, roi_scale_factor=None):
         """Forward function."""
         if len(feats) == 1:
@@ -47,8 +43,7 @@ class GenericRoIExtractor(BaseRoIExtractor):
 
         out_size = self.roi_layers[0].output_size
         num_levels = len(feats)
-        roi_feats = feats[0].new_zeros(
-            rois.size(0), self.out_channels, *out_size)
+        roi_feats = feats[0].new_zeros(rois.size(0), self.out_channels, *out_size)
 
         # some times rois is an empty tensor
         if roi_feats.shape[0] == 0:
@@ -65,7 +60,7 @@ class GenericRoIExtractor(BaseRoIExtractor):
             if self.with_pre:
                 # apply pre-processing to a RoI extracted from each layer
                 roi_feats_t = self.pre_module(roi_feats_t)
-            if self.aggregation == 'sum':
+            if self.aggregation == "sum":
                 # and sum them all
                 roi_feats += roi_feats_t
             else:
@@ -74,7 +69,7 @@ class GenericRoIExtractor(BaseRoIExtractor):
             # update channels starting position
             start_channels = end_channels
         # check if concat channels match at the end
-        if self.aggregation == 'concat':
+        if self.aggregation == "concat":
             assert start_channels == self.out_channels
 
         if self.with_post:

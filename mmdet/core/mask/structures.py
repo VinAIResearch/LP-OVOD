@@ -1,5 +1,3 @@
-from abc import ABCMeta, abstractmethod
-
 import cv2
 import mmcv
 import numpy as np
@@ -7,12 +5,14 @@ import pycocotools.mask as maskUtils
 import torch
 from mmcv.ops.roi_align import roi_align
 
+from abc import ABCMeta, abstractmethod
+
 
 class BaseInstanceMasks(metaclass=ABCMeta):
     """Base class for instance masks."""
 
     @abstractmethod
-    def rescale(self, scale, interpolation='nearest'):
+    def rescale(self, scale, interpolation="nearest"):
         """Rescale masks as large as possible while keeping the aspect ratio.
         For details can refer to `mmcv.imrescale`.
 
@@ -26,7 +26,7 @@ class BaseInstanceMasks(metaclass=ABCMeta):
         pass
 
     @abstractmethod
-    def resize(self, out_shape, interpolation='nearest'):
+    def resize(self, out_shape, interpolation="nearest"):
         """Resize masks to the given out_shape.
 
         Args:
@@ -39,7 +39,7 @@ class BaseInstanceMasks(metaclass=ABCMeta):
         pass
 
     @abstractmethod
-    def flip(self, flip_direction='horizontal'):
+    def flip(self, flip_direction="horizontal"):
         """Flip masks alone the given direction.
 
         Args:
@@ -76,12 +76,7 @@ class BaseInstanceMasks(metaclass=ABCMeta):
         pass
 
     @abstractmethod
-    def crop_and_resize(self,
-                        bboxes,
-                        out_shape,
-                        inds,
-                        device,
-                        interpolation='bilinear'):
+    def crop_and_resize(self, bboxes, out_shape, inds, device, interpolation="bilinear"):
         """Crop and resize masks by the given bboxes.
 
         This function is mainly used in mask targets computation.
@@ -134,12 +129,7 @@ class BaseInstanceMasks(metaclass=ABCMeta):
         pass
 
     @abstractmethod
-    def translate(self,
-                  out_shape,
-                  offset,
-                  direction='horizontal',
-                  fill_val=0,
-                  interpolation='bilinear'):
+    def translate(self, out_shape, offset, direction="horizontal", fill_val=0, interpolation="bilinear"):
         """Translate the masks.
 
         Args:
@@ -155,12 +145,7 @@ class BaseInstanceMasks(metaclass=ABCMeta):
         """
         pass
 
-    def shear(self,
-              out_shape,
-              magnitude,
-              direction='horizontal',
-              border_value=0,
-              interpolation='bilinear'):
+    def shear(self, out_shape, magnitude, direction="horizontal", border_value=0, interpolation="bilinear"):
         """Shear the masks.
 
         Args:
@@ -240,51 +225,46 @@ class BitmapMasks(BaseInstanceMasks):
         return iter(self.masks)
 
     def __repr__(self):
-        s = self.__class__.__name__ + '('
-        s += f'num_masks={len(self.masks)}, '
-        s += f'height={self.height}, '
-        s += f'width={self.width})'
+        s = self.__class__.__name__ + "("
+        s += f"num_masks={len(self.masks)}, "
+        s += f"height={self.height}, "
+        s += f"width={self.width})"
         return s
 
     def __len__(self):
         """Number of masks."""
         return len(self.masks)
 
-    def rescale(self, scale, interpolation='nearest'):
+    def rescale(self, scale, interpolation="nearest"):
         """See :func:`BaseInstanceMasks.rescale`."""
         if len(self.masks) == 0:
             new_w, new_h = mmcv.rescale_size((self.width, self.height), scale)
             rescaled_masks = np.empty((0, new_h, new_w), dtype=np.uint8)
         else:
-            rescaled_masks = np.stack([
-                mmcv.imrescale(mask, scale, interpolation=interpolation)
-                for mask in self.masks
-            ])
+            rescaled_masks = np.stack(
+                [mmcv.imrescale(mask, scale, interpolation=interpolation) for mask in self.masks]
+            )
         height, width = rescaled_masks.shape[1:]
         return BitmapMasks(rescaled_masks, height, width)
 
-    def resize(self, out_shape, interpolation='nearest'):
+    def resize(self, out_shape, interpolation="nearest"):
         """See :func:`BaseInstanceMasks.resize`."""
         if len(self.masks) == 0:
             resized_masks = np.empty((0, *out_shape), dtype=np.uint8)
         else:
-            resized_masks = np.stack([
-                mmcv.imresize(mask, out_shape, interpolation=interpolation)
-                for mask in self.masks
-            ])
+            resized_masks = np.stack(
+                [mmcv.imresize(mask, out_shape, interpolation=interpolation) for mask in self.masks]
+            )
         return BitmapMasks(resized_masks, *out_shape)
 
-    def flip(self, flip_direction='horizontal'):
+    def flip(self, flip_direction="horizontal"):
         """See :func:`BaseInstanceMasks.flip`."""
-        assert flip_direction in ('horizontal', 'vertical', 'diagonal')
+        assert flip_direction in ("horizontal", "vertical", "diagonal")
 
         if len(self.masks) == 0:
             flipped_masks = self.masks
         else:
-            flipped_masks = np.stack([
-                mmcv.imflip(mask, direction=flip_direction)
-                for mask in self.masks
-            ])
+            flipped_masks = np.stack([mmcv.imflip(mask, direction=flip_direction) for mask in self.masks])
         return BitmapMasks(flipped_masks, self.height, self.width)
 
     def pad(self, out_shape, pad_val=0):
@@ -292,10 +272,7 @@ class BitmapMasks(BaseInstanceMasks):
         if len(self.masks) == 0:
             padded_masks = np.empty((0, *out_shape), dtype=np.uint8)
         else:
-            padded_masks = np.stack([
-                mmcv.impad(mask, shape=out_shape, pad_val=pad_val)
-                for mask in self.masks
-            ])
+            padded_masks = np.stack([mmcv.impad(mask, shape=out_shape, pad_val=pad_val) for mask in self.masks])
         return BitmapMasks(padded_masks, *out_shape)
 
     def crop(self, bbox):
@@ -314,15 +291,10 @@ class BitmapMasks(BaseInstanceMasks):
         if len(self.masks) == 0:
             cropped_masks = np.empty((0, h, w), dtype=np.uint8)
         else:
-            cropped_masks = self.masks[:, y1:y1 + h, x1:x1 + w]
+            cropped_masks = self.masks[:, y1 : y1 + h, x1 : x1 + w]
         return BitmapMasks(cropped_masks, h, w)
 
-    def crop_and_resize(self,
-                        bboxes,
-                        out_shape,
-                        inds,
-                        device='cpu',
-                        interpolation='bilinear'):
+    def crop_and_resize(self, bboxes, out_shape, inds, device="cpu", interpolation="bilinear"):
         """See :func:`BaseInstanceMasks.crop_and_resize`."""
         if len(self.masks) == 0:
             empty_masks = np.empty((0, *out_shape), dtype=np.uint8)
@@ -335,15 +307,12 @@ class BitmapMasks(BaseInstanceMasks):
             inds = torch.from_numpy(inds).to(device=device)
 
         num_bbox = bboxes.shape[0]
-        fake_inds = torch.arange(
-            num_bbox, device=device).to(dtype=bboxes.dtype)[:, None]
+        fake_inds = torch.arange(num_bbox, device=device).to(dtype=bboxes.dtype)[:, None]
         rois = torch.cat([fake_inds, bboxes], dim=1)  # Nx5
         rois = rois.to(device=device)
         if num_bbox > 0:
-            gt_masks_th = torch.from_numpy(self.masks).to(device).index_select(
-                0, inds).to(dtype=rois.dtype)
-            targets = roi_align(gt_masks_th[:, None, :, :], rois, out_shape,
-                                1.0, 0, 'avg', True).squeeze(1)
+            gt_masks_th = torch.from_numpy(self.masks).to(device).index_select(0, inds).to(dtype=rois.dtype)
+            targets = roi_align(gt_masks_th[:, None, :, :], rois, out_shape, 1.0, 0, "avg", True).squeeze(1)
             resized_masks = (targets >= 0.5).cpu().numpy()
         else:
             resized_masks = []
@@ -352,21 +321,13 @@ class BitmapMasks(BaseInstanceMasks):
     def expand(self, expanded_h, expanded_w, top, left):
         """See :func:`BaseInstanceMasks.expand`."""
         if len(self.masks) == 0:
-            expanded_mask = np.empty((0, expanded_h, expanded_w),
-                                     dtype=np.uint8)
+            expanded_mask = np.empty((0, expanded_h, expanded_w), dtype=np.uint8)
         else:
-            expanded_mask = np.zeros((len(self), expanded_h, expanded_w),
-                                     dtype=np.uint8)
-            expanded_mask[:, top:top + self.height,
-                          left:left + self.width] = self.masks
+            expanded_mask = np.zeros((len(self), expanded_h, expanded_w), dtype=np.uint8)
+            expanded_mask[:, top : top + self.height, left : left + self.width] = self.masks
         return BitmapMasks(expanded_mask, expanded_h, expanded_w)
 
-    def translate(self,
-                  out_shape,
-                  offset,
-                  direction='horizontal',
-                  fill_val=0,
-                  interpolation='bilinear'):
+    def translate(self, out_shape, offset, direction="horizontal", fill_val=0, interpolation="bilinear"):
         """Translate the BitmapMasks.
 
         Args:
@@ -384,23 +345,14 @@ class BitmapMasks(BaseInstanceMasks):
             translated_masks = np.empty((0, *out_shape), dtype=np.uint8)
         else:
             translated_masks = mmcv.imtranslate(
-                self.masks.transpose((1, 2, 0)),
-                offset,
-                direction,
-                border_value=fill_val,
-                interpolation=interpolation)
+                self.masks.transpose((1, 2, 0)), offset, direction, border_value=fill_val, interpolation=interpolation
+            )
             if translated_masks.ndim == 2:
                 translated_masks = translated_masks[:, :, None]
-            translated_masks = translated_masks.transpose(
-                (2, 0, 1)).astype(self.masks.dtype)
+            translated_masks = translated_masks.transpose((2, 0, 1)).astype(self.masks.dtype)
         return BitmapMasks(translated_masks, *out_shape)
 
-    def shear(self,
-              out_shape,
-              magnitude,
-              direction='horizontal',
-              border_value=0,
-              interpolation='bilinear'):
+    def shear(self, out_shape, magnitude, direction="horizontal", border_value=0, interpolation="bilinear"):
         """Shear the BitmapMasks.
 
         Args:
@@ -423,11 +375,11 @@ class BitmapMasks(BaseInstanceMasks):
                 magnitude,
                 direction,
                 border_value=border_value,
-                interpolation=interpolation)
+                interpolation=interpolation,
+            )
             if sheared_masks.ndim == 2:
                 sheared_masks = sheared_masks[:, :, None]
-            sheared_masks = sheared_masks.transpose(
-                (2, 0, 1)).astype(self.masks.dtype)
+            sheared_masks = sheared_masks.transpose((2, 0, 1)).astype(self.masks.dtype)
         return BitmapMasks(sheared_masks, *out_shape)
 
     def rotate(self, out_shape, angle, center=None, scale=1.0, fill_val=0):
@@ -450,16 +402,12 @@ class BitmapMasks(BaseInstanceMasks):
             rotated_masks = np.empty((0, *out_shape), dtype=self.masks.dtype)
         else:
             rotated_masks = mmcv.imrotate(
-                self.masks.transpose((1, 2, 0)),
-                angle,
-                center=center,
-                scale=scale,
-                border_value=fill_val)
+                self.masks.transpose((1, 2, 0)), angle, center=center, scale=scale, border_value=fill_val
+            )
             if rotated_masks.ndim == 2:
                 # case when only one mask, (h, w)
                 rotated_masks = rotated_masks[:, :, None]  # (h, w, 1)
-            rotated_masks = rotated_masks.transpose(
-                (2, 0, 1)).astype(self.masks.dtype)
+            rotated_masks = rotated_masks.transpose((2, 0, 1)).astype(self.masks.dtype)
         return BitmapMasks(rotated_masks, *out_shape)
 
     @property
@@ -518,8 +466,7 @@ class PolygonMasks(BaseInstanceMasks):
             try:
                 masks = self.masks[index]
             except Exception:
-                raise ValueError(
-                    f'Unsupported input of type {type(index)} for indexing!')
+                raise ValueError(f"Unsupported input of type {type(index)} for indexing!")
         if len(masks) and isinstance(masks[0], np.ndarray):
             masks = [masks]  # ensure a list of three levels
         return PolygonMasks(masks, self.height, self.width)
@@ -528,10 +475,10 @@ class PolygonMasks(BaseInstanceMasks):
         return iter(self.masks)
 
     def __repr__(self):
-        s = self.__class__.__name__ + '('
-        s += f'num_masks={len(self.masks)}, '
-        s += f'height={self.height}, '
-        s += f'width={self.width})'
+        s = self.__class__.__name__ + "("
+        s += f"num_masks={len(self.masks)}, "
+        s += f"height={self.height}, "
+        s += f"width={self.width})"
         return s
 
     def __len__(self):
@@ -566,9 +513,9 @@ class PolygonMasks(BaseInstanceMasks):
             resized_masks = PolygonMasks(resized_masks, *out_shape)
         return resized_masks
 
-    def flip(self, flip_direction='horizontal'):
+    def flip(self, flip_direction="horizontal"):
         """see :func:`BaseInstanceMasks.flip`"""
-        assert flip_direction in ('horizontal', 'vertical', 'diagonal')
+        assert flip_direction in ("horizontal", "vertical", "diagonal")
         if len(self.masks) == 0:
             flipped_masks = PolygonMasks([], self.height, self.width)
         else:
@@ -577,17 +524,16 @@ class PolygonMasks(BaseInstanceMasks):
                 flipped_poly_per_obj = []
                 for p in poly_per_obj:
                     p = p.copy()
-                    if flip_direction == 'horizontal':
+                    if flip_direction == "horizontal":
                         p[0::2] = self.width - p[0::2]
-                    elif flip_direction == 'vertical':
+                    elif flip_direction == "vertical":
                         p[1::2] = self.height - p[1::2]
                     else:
                         p[0::2] = self.width - p[0::2]
                         p[1::2] = self.height - p[1::2]
                     flipped_poly_per_obj.append(p)
                 flipped_masks.append(flipped_poly_per_obj)
-            flipped_masks = PolygonMasks(flipped_masks, self.height,
-                                         self.width)
+            flipped_masks = PolygonMasks(flipped_masks, self.height, self.width)
         return flipped_masks
 
     def crop(self, bbox):
@@ -627,12 +573,7 @@ class PolygonMasks(BaseInstanceMasks):
         """TODO: Add expand for polygon"""
         raise NotImplementedError
 
-    def crop_and_resize(self,
-                        bboxes,
-                        out_shape,
-                        inds,
-                        device='cpu',
-                        interpolation='bilinear'):
+    def crop_and_resize(self, bboxes, out_shape, inds, device="cpu", interpolation="bilinear"):
         """see :func:`BaseInstanceMasks.crop_and_resize`"""
         out_h, out_w = out_shape
         if len(self.masks) == 0:
@@ -663,15 +604,11 @@ class PolygonMasks(BaseInstanceMasks):
             resized_masks.append(resized_mask)
         return PolygonMasks(resized_masks, *out_shape)
 
-    def translate(self,
-                  out_shape,
-                  offset,
-                  direction='horizontal',
-                  fill_val=None,
-                  interpolation=None):
+    def translate(self, out_shape, offset, direction="horizontal", fill_val=None, interpolation=None):
         """Translate the PolygonMasks."""
-        assert fill_val is None or fill_val == 0, 'Here fill_val is not '\
-            f'used, and defaultly should be None or 0. got {fill_val}.'
+        assert fill_val is None or fill_val == 0, (
+            "Here fill_val is not " f"used, and defaultly should be None or 0. got {fill_val}."
+        )
         if len(self.masks) == 0:
             translated_masks = PolygonMasks([], *out_shape)
         else:
@@ -680,43 +617,33 @@ class PolygonMasks(BaseInstanceMasks):
                 translated_poly_per_obj = []
                 for p in poly_per_obj:
                     p = p.copy()
-                    if direction == 'horizontal':
+                    if direction == "horizontal":
                         p[0::2] = np.clip(p[0::2] + offset, 0, out_shape[1])
-                    elif direction == 'vertical':
+                    elif direction == "vertical":
                         p[1::2] = np.clip(p[1::2] + offset, 0, out_shape[0])
                     translated_poly_per_obj.append(p)
                 translated_masks.append(translated_poly_per_obj)
             translated_masks = PolygonMasks(translated_masks, *out_shape)
         return translated_masks
 
-    def shear(self,
-              out_shape,
-              magnitude,
-              direction='horizontal',
-              border_value=0,
-              interpolation='bilinear'):
+    def shear(self, out_shape, magnitude, direction="horizontal", border_value=0, interpolation="bilinear"):
         """See :func:`BaseInstanceMasks.shear`."""
         if len(self.masks) == 0:
             sheared_masks = PolygonMasks([], *out_shape)
         else:
             sheared_masks = []
-            if direction == 'horizontal':
-                shear_matrix = np.stack([[1, magnitude],
-                                         [0, 1]]).astype(np.float32)
-            elif direction == 'vertical':
-                shear_matrix = np.stack([[1, 0], [magnitude,
-                                                  1]]).astype(np.float32)
+            if direction == "horizontal":
+                shear_matrix = np.stack([[1, magnitude], [0, 1]]).astype(np.float32)
+            elif direction == "vertical":
+                shear_matrix = np.stack([[1, 0], [magnitude, 1]]).astype(np.float32)
             for poly_per_obj in self.masks:
                 sheared_poly = []
                 for p in poly_per_obj:
                     p = np.stack([p[0::2], p[1::2]], axis=0)  # [2, n]
                     new_coords = np.matmul(shear_matrix, p)  # [2, n]
-                    new_coords[0, :] = np.clip(new_coords[0, :], 0,
-                                               out_shape[1])
-                    new_coords[1, :] = np.clip(new_coords[1, :], 0,
-                                               out_shape[0])
-                    sheared_poly.append(
-                        new_coords.transpose((1, 0)).reshape(-1))
+                    new_coords[0, :] = np.clip(new_coords[0, :], 0, out_shape[1])
+                    new_coords[1, :] = np.clip(new_coords[1, :], 0, out_shape[0])
+                    sheared_poly.append(new_coords.transpose((1, 0)).reshape(-1))
                 sheared_masks.append(sheared_poly)
             sheared_masks = PolygonMasks(sheared_masks, *out_shape)
         return sheared_masks
@@ -735,16 +662,12 @@ class PolygonMasks(BaseInstanceMasks):
                     coords = np.stack([p[0::2], p[1::2]], axis=1)  # [n, 2]
                     # pad 1 to convert from format [x, y] to homogeneous
                     # coordinates format [x, y, 1]
-                    coords = np.concatenate(
-                        (coords, np.ones((coords.shape[0], 1), coords.dtype)),
-                        axis=1)  # [n, 3]
-                    rotated_coords = np.matmul(
-                        rotate_matrix[None, :, :],
-                        coords[:, :, None])[..., 0]  # [n, 2, 1] -> [n, 2]
-                    rotated_coords[:, 0] = np.clip(rotated_coords[:, 0], 0,
-                                                   out_shape[1])
-                    rotated_coords[:, 1] = np.clip(rotated_coords[:, 1], 0,
-                                                   out_shape[0])
+                    coords = np.concatenate((coords, np.ones((coords.shape[0], 1), coords.dtype)), axis=1)  # [n, 3]
+                    rotated_coords = np.matmul(rotate_matrix[None, :, :], coords[:, :, None])[
+                        ..., 0
+                    ]  # [n, 2, 1] -> [n, 2]
+                    rotated_coords[:, 0] = np.clip(rotated_coords[:, 0], 0, out_shape[1])
+                    rotated_coords[:, 1] = np.clip(rotated_coords[:, 1], 0, out_shape[0])
                     rotated_poly.append(rotated_coords.reshape(-1))
                 rotated_masks.append(rotated_poly)
             rotated_masks = PolygonMasks(rotated_masks, *out_shape)
@@ -787,8 +710,7 @@ class PolygonMasks(BaseInstanceMasks):
         Return:
             float: the are of the component
         """  # noqa: 501
-        return 0.5 * np.abs(
-            np.dot(x, np.roll(y, 1)) - np.dot(y, np.roll(x, 1)))
+        return 0.5 * np.abs(np.dot(x, np.roll(y, 1)) - np.dot(y, np.roll(x, 1)))
 
     def to_ndarray(self):
         """Convert masks to the format of ndarray."""
@@ -796,16 +718,13 @@ class PolygonMasks(BaseInstanceMasks):
             return np.empty((0, self.height, self.width), dtype=np.uint8)
         bitmap_masks = []
         for poly_per_obj in self.masks:
-            bitmap_masks.append(
-                polygon_to_bitmap(poly_per_obj, self.height, self.width))
+            bitmap_masks.append(polygon_to_bitmap(poly_per_obj, self.height, self.width))
         return np.stack(bitmap_masks)
 
     def to_tensor(self, dtype, device):
         """See :func:`BaseInstanceMasks.to_tensor`."""
         if len(self.masks) == 0:
-            return torch.empty((0, self.height, self.width),
-                               dtype=dtype,
-                               device=device)
+            return torch.empty((0, self.height, self.width), dtype=dtype, device=device)
         ndarray_masks = self.to_ndarray()
         return torch.tensor(ndarray_masks, dtype=dtype, device=device)
 

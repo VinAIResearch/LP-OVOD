@@ -1,9 +1,9 @@
-from functools import partial
-
 import mmcv
 import numpy as np
 import torch
 from mmcv.runner import load_checkpoint
+
+from functools import partial
 
 
 def generate_inputs_and_wrap_model(config_path, checkpoint_path, input_config):
@@ -40,8 +40,7 @@ def generate_inputs_and_wrap_model(config_path, checkpoint_path, input_config):
     model = build_model_from_cfg(config_path, checkpoint_path)
     one_img, one_meta = preprocess_example_input(input_config)
     tensor_data = [one_img]
-    model.forward = partial(
-        model.forward, img_metas=[[one_meta]], return_loss=False)
+    model.forward = partial(model.forward, img_metas=[[one_meta]], return_loss=False)
 
     # pytorch has some bug in pytorch1.3, we have to fix it
     # by replacing these existing op
@@ -51,7 +50,7 @@ def generate_inputs_and_wrap_model(config_path, checkpoint_path, input_config):
     try:
         from mmcv.onnx.symbolic import register_extra_symbolics
     except ModuleNotFoundError:
-        raise NotImplementedError('please update mmcv to version>=v1.0.4')
+        raise NotImplementedError("please update mmcv to version>=v1.0.4")
     register_extra_symbolics(opset_version)
 
     return model, tensor_data
@@ -72,15 +71,16 @@ def build_model_from_cfg(config_path, checkpoint_path):
 
     cfg = mmcv.Config.fromfile(config_path)
     # import modules from string list.
-    if cfg.get('custom_imports', None):
+    if cfg.get("custom_imports", None):
         from mmcv.utils import import_modules_from_strings
-        import_modules_from_strings(**cfg['custom_imports'])
+
+        import_modules_from_strings(**cfg["custom_imports"])
     cfg.model.pretrained = None
     cfg.data.test.test_mode = True
 
     # build the model
     model = build_detector(cfg.model, train_cfg=None, test_cfg=cfg.test_cfg)
-    load_checkpoint(model, checkpoint_path, map_location='cpu')
+    load_checkpoint(model, checkpoint_path, map_location="cpu")
     model.cpu().eval()
     return model
 
@@ -116,28 +116,27 @@ def preprocess_example_input(input_config):
         'scale_factor': 1.0,
         'flip': False}
     """
-    input_path = input_config['input_path']
-    input_shape = input_config['input_shape']
+    input_path = input_config["input_path"]
+    input_shape = input_config["input_shape"]
     one_img = mmcv.imread(input_path)
     one_img = mmcv.imresize(one_img, input_shape[2:][::-1])
     show_img = one_img.copy()
-    if 'normalize_cfg' in input_config.keys():
-        normalize_cfg = input_config['normalize_cfg']
-        mean = np.array(normalize_cfg['mean'], dtype=np.float32)
-        std = np.array(normalize_cfg['std'], dtype=np.float32)
+    if "normalize_cfg" in input_config.keys():
+        normalize_cfg = input_config["normalize_cfg"]
+        mean = np.array(normalize_cfg["mean"], dtype=np.float32)
+        std = np.array(normalize_cfg["std"], dtype=np.float32)
         one_img = mmcv.imnormalize(one_img, mean, std)
     one_img = one_img.transpose(2, 0, 1)
-    one_img = torch.from_numpy(one_img).unsqueeze(0).float().requires_grad_(
-        True)
+    one_img = torch.from_numpy(one_img).unsqueeze(0).float().requires_grad_(True)
     (_, C, H, W) = input_shape
     one_meta = {
-        'img_shape': (H, W, C),
-        'ori_shape': (H, W, C),
-        'pad_shape': (H, W, C),
-        'filename': '<demo>.png',
-        'scale_factor': 1.0,
-        'flip': False,
-        'show_img': show_img,
+        "img_shape": (H, W, C),
+        "ori_shape": (H, W, C),
+        "pad_shape": (H, W, C),
+        "filename": "<demo>.png",
+        "scale_factor": 1.0,
+        "flip": False,
+        "show_img": show_img,
     }
 
     return one_img, one_meta

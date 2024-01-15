@@ -55,51 +55,47 @@ class AnchorGenerator(object):
         tensor([[-9., -9., 9., 9.]])]
     """
 
-    def __init__(self,
-                 strides,
-                 ratios,
-                 scales=None,
-                 base_sizes=None,
-                 scale_major=True,
-                 octave_base_scale=None,
-                 scales_per_octave=None,
-                 centers=None,
-                 center_offset=0.):
+    def __init__(
+        self,
+        strides,
+        ratios,
+        scales=None,
+        base_sizes=None,
+        scale_major=True,
+        octave_base_scale=None,
+        scales_per_octave=None,
+        centers=None,
+        center_offset=0.0,
+    ):
         # check center and center_offset
         if center_offset != 0:
-            assert centers is None, 'center cannot be set when center_offset' \
-                f'!=0, {centers} is given.'
+            assert centers is None, "center cannot be set when center_offset" f"!=0, {centers} is given."
         if not (0 <= center_offset <= 1):
-            raise ValueError('center_offset should be in range [0, 1], '
-                             f'{center_offset} is given.')
+            raise ValueError("center_offset should be in range [0, 1], " f"{center_offset} is given.")
         if centers is not None:
-            assert len(centers) == len(strides), \
-                'The number of strides should be the same as centers, got ' \
-                f'{strides} and {centers}'
+            assert len(centers) == len(strides), (
+                "The number of strides should be the same as centers, got " f"{strides} and {centers}"
+            )
 
         # calculate base sizes of anchors
         self.strides = [_pair(stride) for stride in strides]
-        self.base_sizes = [min(stride) for stride in self.strides
-                           ] if base_sizes is None else base_sizes
-        assert len(self.base_sizes) == len(self.strides), \
-            'The number of strides should be the same as base sizes, got ' \
-            f'{self.strides} and {self.base_sizes}'
+        self.base_sizes = [min(stride) for stride in self.strides] if base_sizes is None else base_sizes
+        assert len(self.base_sizes) == len(self.strides), (
+            "The number of strides should be the same as base sizes, got " f"{self.strides} and {self.base_sizes}"
+        )
 
         # calculate scales of anchors
-        assert ((octave_base_scale is not None
-                and scales_per_octave is not None) ^ (scales is not None)), \
-            'scales and octave_base_scale with scales_per_octave cannot' \
-            ' be set at the same time'
+        assert (octave_base_scale is not None and scales_per_octave is not None) ^ (scales is not None), (
+            "scales and octave_base_scale with scales_per_octave cannot" " be set at the same time"
+        )
         if scales is not None:
             self.scales = torch.Tensor(scales)
         elif octave_base_scale is not None and scales_per_octave is not None:
-            octave_scales = np.array(
-                [2**(i / scales_per_octave) for i in range(scales_per_octave)])
+            octave_scales = np.array([2 ** (i / scales_per_octave) for i in range(scales_per_octave)])
             scales = octave_scales * octave_base_scale
             self.scales = torch.Tensor(scales)
         else:
-            raise ValueError('Either scales or octave_base_scale with '
-                             'scales_per_octave should be set')
+            raise ValueError("Either scales or octave_base_scale with " "scales_per_octave should be set")
 
         self.octave_base_scale = octave_base_scale
         self.scales_per_octave = scales_per_octave
@@ -132,18 +128,11 @@ class AnchorGenerator(object):
             if self.centers is not None:
                 center = self.centers[i]
             multi_level_base_anchors.append(
-                self.gen_single_level_base_anchors(
-                    base_size,
-                    scales=self.scales,
-                    ratios=self.ratios,
-                    center=center))
+                self.gen_single_level_base_anchors(base_size, scales=self.scales, ratios=self.ratios, center=center)
+            )
         return multi_level_base_anchors
 
-    def gen_single_level_base_anchors(self,
-                                      base_size,
-                                      scales,
-                                      ratios,
-                                      center=None):
+    def gen_single_level_base_anchors(self, base_size, scales, ratios, center=None):
         """Generate base anchors of a single level.
 
         Args:
@@ -176,10 +165,7 @@ class AnchorGenerator(object):
 
         # use float anchor and the anchor's center is aligned with the
         # pixel center
-        base_anchors = [
-            x_center - 0.5 * ws, y_center - 0.5 * hs, x_center + 0.5 * ws,
-            y_center + 0.5 * hs
-        ]
+        base_anchors = [x_center - 0.5 * ws, y_center - 0.5 * hs, x_center + 0.5 * ws, y_center + 0.5 * hs]
         base_anchors = torch.stack(base_anchors, dim=-1)
 
         return base_anchors
@@ -203,7 +189,7 @@ class AnchorGenerator(object):
         else:
             return yy, xx
 
-    def grid_anchors(self, featmap_sizes, device='cuda'):
+    def grid_anchors(self, featmap_sizes, device="cuda"):
         """Generate grid anchors in multiple feature levels.
 
         Args:
@@ -222,18 +208,12 @@ class AnchorGenerator(object):
         multi_level_anchors = []
         for i in range(self.num_levels):
             anchors = self.single_level_grid_anchors(
-                self.base_anchors[i].to(device),
-                featmap_sizes[i],
-                self.strides[i],
-                device=device)
+                self.base_anchors[i].to(device), featmap_sizes[i], self.strides[i], device=device
+            )
             multi_level_anchors.append(anchors)
         return multi_level_anchors
 
-    def single_level_grid_anchors(self,
-                                  base_anchors,
-                                  featmap_size,
-                                  stride=(16, 16),
-                                  device='cuda'):
+    def single_level_grid_anchors(self, base_anchors, featmap_size, stride=(16, 16), device="cuda"):
         """Generate grid anchors of a single level.
 
         Note:
@@ -270,7 +250,7 @@ class AnchorGenerator(object):
         # then (0, 1), (0, 2), ...
         return all_anchors
 
-    def valid_flags(self, featmap_sizes, pad_shape, device='cuda'):
+    def valid_flags(self, featmap_sizes, pad_shape, device="cuda"):
         """Generate valid flags of anchors in multiple feature levels.
 
         Args:
@@ -290,18 +270,13 @@ class AnchorGenerator(object):
             h, w = pad_shape[:2]
             valid_feat_h = min(int(np.ceil(h / anchor_stride[1])), feat_h)
             valid_feat_w = min(int(np.ceil(w / anchor_stride[0])), feat_w)
-            flags = self.single_level_valid_flags((feat_h, feat_w),
-                                                  (valid_feat_h, valid_feat_w),
-                                                  self.num_base_anchors[i],
-                                                  device=device)
+            flags = self.single_level_valid_flags(
+                (feat_h, feat_w), (valid_feat_h, valid_feat_w), self.num_base_anchors[i], device=device
+            )
             multi_level_flags.append(flags)
         return multi_level_flags
 
-    def single_level_valid_flags(self,
-                                 featmap_size,
-                                 valid_size,
-                                 num_base_anchors,
-                                 device='cuda'):
+    def single_level_valid_flags(self, featmap_size, valid_size, num_base_anchors, device="cuda"):
         """Generate the valid flags of anchor in a single feature map.
 
         Args:
@@ -324,26 +299,25 @@ class AnchorGenerator(object):
         valid_y[:valid_h] = 1
         valid_xx, valid_yy = self._meshgrid(valid_x, valid_y)
         valid = valid_xx & valid_yy
-        valid = valid[:, None].expand(valid.size(0),
-                                      num_base_anchors).contiguous().view(-1)
+        valid = valid[:, None].expand(valid.size(0), num_base_anchors).contiguous().view(-1)
         return valid
 
     def __repr__(self):
         """str: a string that describes the module"""
-        indent_str = '    '
-        repr_str = self.__class__.__name__ + '(\n'
-        repr_str += f'{indent_str}strides={self.strides},\n'
-        repr_str += f'{indent_str}ratios={self.ratios},\n'
-        repr_str += f'{indent_str}scales={self.scales},\n'
-        repr_str += f'{indent_str}base_sizes={self.base_sizes},\n'
-        repr_str += f'{indent_str}scale_major={self.scale_major},\n'
-        repr_str += f'{indent_str}octave_base_scale='
-        repr_str += f'{self.octave_base_scale},\n'
-        repr_str += f'{indent_str}scales_per_octave='
-        repr_str += f'{self.scales_per_octave},\n'
-        repr_str += f'{indent_str}num_levels={self.num_levels}\n'
-        repr_str += f'{indent_str}centers={self.centers},\n'
-        repr_str += f'{indent_str}center_offset={self.center_offset})'
+        indent_str = "    "
+        repr_str = self.__class__.__name__ + "(\n"
+        repr_str += f"{indent_str}strides={self.strides},\n"
+        repr_str += f"{indent_str}ratios={self.ratios},\n"
+        repr_str += f"{indent_str}scales={self.scales},\n"
+        repr_str += f"{indent_str}base_sizes={self.base_sizes},\n"
+        repr_str += f"{indent_str}scale_major={self.scale_major},\n"
+        repr_str += f"{indent_str}octave_base_scale="
+        repr_str += f"{self.octave_base_scale},\n"
+        repr_str += f"{indent_str}scales_per_octave="
+        repr_str += f"{self.scales_per_octave},\n"
+        repr_str += f"{indent_str}num_levels={self.num_levels}\n"
+        repr_str += f"{indent_str}centers={self.centers},\n"
+        repr_str += f"{indent_str}center_offset={self.center_offset})"
         return repr_str
 
 
@@ -364,19 +338,13 @@ class SSDAnchorGenerator(AnchorGenerator):
             same scales. It is always set to be False in SSD.
     """
 
-    def __init__(self,
-                 strides,
-                 ratios,
-                 basesize_ratio_range,
-                 input_size=300,
-                 scale_major=True):
+    def __init__(self, strides, ratios, basesize_ratio_range, input_size=300, scale_major=True):
         assert len(strides) == len(ratios)
         assert mmcv.is_tuple_of(basesize_ratio_range, float)
 
         self.strides = [_pair(stride) for stride in strides]
         self.input_size = input_size
-        self.centers = [(stride[0] / 2., stride[1] / 2.)
-                        for stride in self.strides]
+        self.centers = [(stride[0] / 2.0, stride[1] / 2.0) for stride in self.strides]
         self.basesize_ratio_range = basesize_ratio_range
 
         # calculate anchor ratios and sizes
@@ -398,9 +366,10 @@ class SSDAnchorGenerator(AnchorGenerator):
                 max_sizes.insert(0, int(self.input_size * 20 / 100))
             else:
                 raise ValueError(
-                    'basesize_ratio_range[0] should be either 0.15'
-                    'or 0.2 when input_size is 300, got '
-                    f'{basesize_ratio_range[0]}.')
+                    "basesize_ratio_range[0] should be either 0.15"
+                    "or 0.2 when input_size is 300, got "
+                    f"{basesize_ratio_range[0]}."
+                )
         elif self.input_size == 512:
             if basesize_ratio_range[0] == 0.1:  # SSD512 COCO
                 min_sizes.insert(0, int(self.input_size * 4 / 100))
@@ -409,18 +378,19 @@ class SSDAnchorGenerator(AnchorGenerator):
                 min_sizes.insert(0, int(self.input_size * 7 / 100))
                 max_sizes.insert(0, int(self.input_size * 15 / 100))
             else:
-                raise ValueError('basesize_ratio_range[0] should be either 0.1'
-                                 'or 0.15 when input_size is 512, got'
-                                 f' {basesize_ratio_range[0]}.')
+                raise ValueError(
+                    "basesize_ratio_range[0] should be either 0.1"
+                    "or 0.15 when input_size is 512, got"
+                    f" {basesize_ratio_range[0]}."
+                )
         else:
-            raise ValueError('Only support 300 or 512 in SSDAnchorGenerator'
-                             f', got {self.input_size}.')
+            raise ValueError("Only support 300 or 512 in SSDAnchorGenerator" f", got {self.input_size}.")
 
         anchor_ratios = []
         anchor_scales = []
         for k in range(len(self.strides)):
-            scales = [1., np.sqrt(max_sizes[k] / min_sizes[k])]
-            anchor_ratio = [1.]
+            scales = [1.0, np.sqrt(max_sizes[k] / min_sizes[k])]
+            anchor_ratio = [1.0]
             for r in ratios[k]:
                 anchor_ratio += [1 / r, r]  # 4 or 6 ratio
             anchor_ratios.append(torch.Tensor(anchor_ratio))
@@ -443,31 +413,28 @@ class SSDAnchorGenerator(AnchorGenerator):
         multi_level_base_anchors = []
         for i, base_size in enumerate(self.base_sizes):
             base_anchors = self.gen_single_level_base_anchors(
-                base_size,
-                scales=self.scales[i],
-                ratios=self.ratios[i],
-                center=self.centers[i])
+                base_size, scales=self.scales[i], ratios=self.ratios[i], center=self.centers[i]
+            )
             indices = list(range(len(self.ratios[i])))
             indices.insert(1, len(indices))
-            base_anchors = torch.index_select(base_anchors, 0,
-                                              torch.LongTensor(indices))
+            base_anchors = torch.index_select(base_anchors, 0, torch.LongTensor(indices))
             multi_level_base_anchors.append(base_anchors)
         return multi_level_base_anchors
 
     def __repr__(self):
         """str: a string that describes the module"""
-        indent_str = '    '
-        repr_str = self.__class__.__name__ + '(\n'
-        repr_str += f'{indent_str}strides={self.strides},\n'
-        repr_str += f'{indent_str}scales={self.scales},\n'
-        repr_str += f'{indent_str}scale_major={self.scale_major},\n'
-        repr_str += f'{indent_str}input_size={self.input_size},\n'
-        repr_str += f'{indent_str}scales={self.scales},\n'
-        repr_str += f'{indent_str}ratios={self.ratios},\n'
-        repr_str += f'{indent_str}num_levels={self.num_levels},\n'
-        repr_str += f'{indent_str}base_sizes={self.base_sizes},\n'
-        repr_str += f'{indent_str}basesize_ratio_range='
-        repr_str += f'{self.basesize_ratio_range})'
+        indent_str = "    "
+        repr_str = self.__class__.__name__ + "(\n"
+        repr_str += f"{indent_str}strides={self.strides},\n"
+        repr_str += f"{indent_str}scales={self.scales},\n"
+        repr_str += f"{indent_str}scale_major={self.scale_major},\n"
+        repr_str += f"{indent_str}input_size={self.input_size},\n"
+        repr_str += f"{indent_str}scales={self.scales},\n"
+        repr_str += f"{indent_str}ratios={self.ratios},\n"
+        repr_str += f"{indent_str}num_levels={self.num_levels},\n"
+        repr_str += f"{indent_str}base_sizes={self.base_sizes},\n"
+        repr_str += f"{indent_str}basesize_ratio_range="
+        repr_str += f"{self.basesize_ratio_range})"
         return repr_str
 
 
@@ -520,11 +487,7 @@ class LegacyAnchorGenerator(AnchorGenerator):
                 [16., 16., 24., 24.]])]
     """
 
-    def gen_single_level_base_anchors(self,
-                                      base_size,
-                                      scales,
-                                      ratios,
-                                      center=None):
+    def gen_single_level_base_anchors(self, base_size, scales, ratios, center=None):
         """Generate base anchors of a single level.
 
         Note:
@@ -562,8 +525,10 @@ class LegacyAnchorGenerator(AnchorGenerator):
         # use float anchor and the anchor's center is aligned with the
         # pixel center
         base_anchors = [
-            x_center - 0.5 * (ws - 1), y_center - 0.5 * (hs - 1),
-            x_center + 0.5 * (ws - 1), y_center + 0.5 * (hs - 1)
+            x_center - 0.5 * (ws - 1),
+            y_center - 0.5 * (hs - 1),
+            x_center + 0.5 * (ws - 1),
+            y_center + 0.5 * (hs - 1),
         ]
         base_anchors = torch.stack(base_anchors, dim=-1).round()
 
@@ -578,17 +543,9 @@ class LegacySSDAnchorGenerator(SSDAnchorGenerator, LegacyAnchorGenerator):
     can be found in `LegacyAnchorGenerator`.
     """
 
-    def __init__(self,
-                 strides,
-                 ratios,
-                 basesize_ratio_range,
-                 input_size=300,
-                 scale_major=True):
-        super(LegacySSDAnchorGenerator,
-              self).__init__(strides, ratios, basesize_ratio_range, input_size,
-                             scale_major)
-        self.centers = [((stride - 1) / 2., (stride - 1) / 2.)
-                        for stride in strides]
+    def __init__(self, strides, ratios, basesize_ratio_range, input_size=300, scale_major=True):
+        super(LegacySSDAnchorGenerator, self).__init__(strides, ratios, basesize_ratio_range, input_size, scale_major)
+        self.centers = [((stride - 1) / 2.0, (stride - 1) / 2.0) for stride in strides]
         self.base_anchors = self.gen_base_anchors()
 
 
@@ -605,14 +562,12 @@ class YOLOAnchorGenerator(AnchorGenerator):
 
     def __init__(self, strides, base_sizes):
         self.strides = [_pair(stride) for stride in strides]
-        self.centers = [(stride[0] / 2., stride[1] / 2.)
-                        for stride in self.strides]
+        self.centers = [(stride[0] / 2.0, stride[1] / 2.0) for stride in self.strides]
         self.base_sizes = []
         num_anchor_per_level = len(base_sizes[0])
         for base_sizes_per_level in base_sizes:
             assert num_anchor_per_level == len(base_sizes_per_level)
-            self.base_sizes.append(
-                [_pair(base_size) for base_size in base_sizes_per_level])
+            self.base_sizes.append([_pair(base_size) for base_size in base_sizes_per_level])
         self.base_anchors = self.gen_base_anchors()
 
     @property
@@ -632,9 +587,7 @@ class YOLOAnchorGenerator(AnchorGenerator):
             center = None
             if self.centers is not None:
                 center = self.centers[i]
-            multi_level_base_anchors.append(
-                self.gen_single_level_base_anchors(base_sizes_per_level,
-                                                   center))
+            multi_level_base_anchors.append(self.gen_single_level_base_anchors(base_sizes_per_level, center))
         return multi_level_base_anchors
 
     def gen_single_level_base_anchors(self, base_sizes_per_level, center=None):
@@ -656,16 +609,15 @@ class YOLOAnchorGenerator(AnchorGenerator):
 
             # use float anchor and the anchor's center is aligned with the
             # pixel center
-            base_anchor = torch.Tensor([
-                x_center - 0.5 * w, y_center - 0.5 * h, x_center + 0.5 * w,
-                y_center + 0.5 * h
-            ])
+            base_anchor = torch.Tensor(
+                [x_center - 0.5 * w, y_center - 0.5 * h, x_center + 0.5 * w, y_center + 0.5 * h]
+            )
             base_anchors.append(base_anchor)
         base_anchors = torch.stack(base_anchors, dim=0)
 
         return base_anchors
 
-    def responsible_flags(self, featmap_sizes, gt_bboxes, device='cuda'):
+    def responsible_flags(self, featmap_sizes, gt_bboxes, device="cuda"):
         """Generate responsible anchor flags of grid cells in multiple scales.
 
         Args:
@@ -682,20 +634,12 @@ class YOLOAnchorGenerator(AnchorGenerator):
         for i in range(self.num_levels):
             anchor_stride = self.strides[i]
             flags = self.single_level_responsible_flags(
-                featmap_sizes[i],
-                gt_bboxes,
-                anchor_stride,
-                self.num_base_anchors[i],
-                device=device)
+                featmap_sizes[i], gt_bboxes, anchor_stride, self.num_base_anchors[i], device=device
+            )
             multi_level_responsible_flags.append(flags)
         return multi_level_responsible_flags
 
-    def single_level_responsible_flags(self,
-                                       featmap_size,
-                                       gt_bboxes,
-                                       stride,
-                                       num_base_anchors,
-                                       device='cuda'):
+    def single_level_responsible_flags(self, featmap_size, gt_bboxes, stride, num_base_anchors, device="cuda"):
         """Generate the responsible flags of anchor in a single feature map.
 
         Args:
@@ -719,10 +663,10 @@ class YOLOAnchorGenerator(AnchorGenerator):
         # row major indexing
         gt_bboxes_grid_idx = gt_bboxes_grid_y * feat_w + gt_bboxes_grid_x
 
-        responsible_grid = torch.zeros(
-            feat_h * feat_w, dtype=torch.uint8, device=device)
+        responsible_grid = torch.zeros(feat_h * feat_w, dtype=torch.uint8, device=device)
         responsible_grid[gt_bboxes_grid_idx] = 1
 
-        responsible_grid = responsible_grid[:, None].expand(
-            responsible_grid.size(0), num_base_anchors).contiguous().view(-1)
+        responsible_grid = (
+            responsible_grid[:, None].expand(responsible_grid.size(0), num_base_anchors).contiguous().view(-1)
+        )
         return responsible_grid

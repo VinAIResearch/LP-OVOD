@@ -29,9 +29,7 @@ class LegacyDeltaXYWHBBoxCoder(BaseBBoxCoder):
             target for delta coordinates
     """
 
-    def __init__(self,
-                 target_means=(0., 0., 0., 0.),
-                 target_stds=(1., 1., 1., 1.)):
+    def __init__(self, target_means=(0.0, 0.0, 0.0, 0.0), target_stds=(1.0, 1.0, 1.0, 1.0)):
         super(BaseBBoxCoder, self).__init__()
         self.means = target_means
         self.stds = target_stds
@@ -50,15 +48,10 @@ class LegacyDeltaXYWHBBoxCoder(BaseBBoxCoder):
         """
         assert bboxes.size(0) == gt_bboxes.size(0)
         assert bboxes.size(-1) == gt_bboxes.size(-1) == 4
-        encoded_bboxes = legacy_bbox2delta(bboxes, gt_bboxes, self.means,
-                                           self.stds)
+        encoded_bboxes = legacy_bbox2delta(bboxes, gt_bboxes, self.means, self.stds)
         return encoded_bboxes
 
-    def decode(self,
-               bboxes,
-               pred_bboxes,
-               max_shape=None,
-               wh_ratio_clip=16 / 1000):
+    def decode(self, bboxes, pred_bboxes, max_shape=None, wh_ratio_clip=16 / 1000):
         """Apply transformation `pred_bboxes` to `boxes`.
 
         Args:
@@ -73,16 +66,12 @@ class LegacyDeltaXYWHBBoxCoder(BaseBBoxCoder):
             torch.Tensor: Decoded boxes.
         """
         assert pred_bboxes.size(0) == bboxes.size(0)
-        decoded_bboxes = legacy_delta2bbox(bboxes, pred_bboxes, self.means,
-                                           self.stds, max_shape, wh_ratio_clip)
+        decoded_bboxes = legacy_delta2bbox(bboxes, pred_bboxes, self.means, self.stds, max_shape, wh_ratio_clip)
 
         return decoded_bboxes
 
 
-def legacy_bbox2delta(proposals,
-                      gt,
-                      means=(0., 0., 0., 0.),
-                      stds=(1., 1., 1., 1.)):
+def legacy_bbox2delta(proposals, gt, means=(0.0, 0.0, 0.0, 0.0), stds=(1.0, 1.0, 1.0, 1.0)):
     """Compute deltas of proposals w.r.t. gt in the MMDet V1.x manner.
 
     We usually compute the deltas of x, y, w, h of proposals w.r.t ground
@@ -127,12 +116,9 @@ def legacy_bbox2delta(proposals,
     return deltas
 
 
-def legacy_delta2bbox(rois,
-                      deltas,
-                      means=(0., 0., 0., 0.),
-                      stds=(1., 1., 1., 1.),
-                      max_shape=None,
-                      wh_ratio_clip=16 / 1000):
+def legacy_delta2bbox(
+    rois, deltas, means=(0.0, 0.0, 0.0, 0.0), stds=(1.0, 1.0, 1.0, 1.0), max_shape=None, wh_ratio_clip=16 / 1000
+):
     """Apply deltas to shift/scale base boxes in the MMDet V1.x manner.
 
     Typically the rois are anchor or proposed bounding boxes and the deltas are

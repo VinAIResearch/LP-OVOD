@@ -1,71 +1,71 @@
-import copy
-import platform
-import random
-from functools import partial
-
 import numpy as np
 from mmcv.parallel import collate
 from mmcv.runner import get_dist_info
 from mmcv.utils import Registry, build_from_cfg
 from torch.utils.data import DataLoader
 
+import copy
+import platform
+import random
+from functools import partial
 from .samplers import DistributedGroupSampler, DistributedSampler, GroupSampler
 
-if platform.system() != 'Windows':
+
+if platform.system() != "Windows":
     # https://github.com/pytorch/pytorch/issues/973
     import resource
+
     rlimit = resource.getrlimit(resource.RLIMIT_NOFILE)
     hard_limit = rlimit[1]
     soft_limit = min(4096, hard_limit)
     resource.setrlimit(resource.RLIMIT_NOFILE, (soft_limit, hard_limit))
 
-DATASETS = Registry('dataset')
-PIPELINES = Registry('pipeline')
+DATASETS = Registry("dataset")
+PIPELINES = Registry("pipeline")
 
 
 def _concat_dataset(cfg, default_args=None):
     from .dataset_wrappers import ConcatDataset
-    ann_files = cfg['ann_file']
-    img_prefixes = cfg.get('img_prefix', None)
-    seg_prefixes = cfg.get('seg_prefix', None)
-    proposal_files = cfg.get('proposal_file', None)
-    separate_eval = cfg.get('separate_eval', True)
+
+    ann_files = cfg["ann_file"]
+    img_prefixes = cfg.get("img_prefix", None)
+    seg_prefixes = cfg.get("seg_prefix", None)
+    proposal_files = cfg.get("proposal_file", None)
+    separate_eval = cfg.get("separate_eval", True)
 
     datasets = []
     num_dset = len(ann_files)
     for i in range(num_dset):
         data_cfg = copy.deepcopy(cfg)
         # pop 'separate_eval' since it is not a valid key for common datasets.
-        if 'separate_eval' in data_cfg:
-            data_cfg.pop('separate_eval')
-        data_cfg['ann_file'] = ann_files[i]
+        if "separate_eval" in data_cfg:
+            data_cfg.pop("separate_eval")
+        data_cfg["ann_file"] = ann_files[i]
         if isinstance(img_prefixes, (list, tuple)):
-            data_cfg['img_prefix'] = img_prefixes[i]
+            data_cfg["img_prefix"] = img_prefixes[i]
         if isinstance(seg_prefixes, (list, tuple)):
-            data_cfg['seg_prefix'] = seg_prefixes[i]
+            data_cfg["seg_prefix"] = seg_prefixes[i]
         if isinstance(proposal_files, (list, tuple)):
-            data_cfg['proposal_file'] = proposal_files[i]
+            data_cfg["proposal_file"] = proposal_files[i]
         datasets.append(build_dataset(data_cfg, default_args))
 
     return ConcatDataset(datasets, separate_eval)
 
 
 def build_dataset(cfg, default_args=None):
-    from .dataset_wrappers import (ConcatDataset, RepeatDataset,
-                                   ClassBalancedDataset)
+    from .dataset_wrappers import ClassBalancedDataset, ConcatDataset, RepeatDataset
+
     if isinstance(cfg, (list, tuple)):
         dataset = ConcatDataset([build_dataset(c, default_args) for c in cfg])
-    elif cfg['type'] == 'ConcatDataset':
+    elif cfg["type"] == "ConcatDataset":
         dataset = ConcatDataset(
-            [build_dataset(c, default_args) for c in cfg['datasets']],
-            cfg.get('separate_eval', True))
-    elif cfg['type'] == 'RepeatDataset':
-        dataset = RepeatDataset(
-            build_dataset(cfg['dataset'], default_args), cfg['times'])
-    elif cfg['type'] == 'ClassBalancedDataset':
-        dataset = ClassBalancedDataset(
-            build_dataset(cfg['dataset'], default_args), cfg['oversample_thr'])
-    elif isinstance(cfg.get('ann_file'), (list, tuple)):
+            [build_dataset(c, default_args) for c in cfg["datasets"]], cfg.get("separate_eval", True)
+        )
+    elif cfg["type"] == "RepeatDataset":
+        dataset = RepeatDataset(build_dataset(cfg["dataset"], default_args), cfg["times"])
+    elif cfg["type"] == "ClassBalancedDataset":
+        dataset = ClassBalancedDataset(build_dataset(cfg["dataset"], default_args), cfg["oversample_thr"])
+    elif isinstance(cfg.get("ann_file"), (list, tuple)):
         dataset = _concat_dataset(cfg, default_args)
     else:
         dataset = build_from_cfg(cfg, DATASETS, default_args)
@@ -73,14 +73,9 @@ def build_dataset(cfg, default_args=None):
     return dataset
 
 
-def build_dataloader(dataset,
-                     samples_per_gpu,
-                     workers_per_gpu,
-                     num_gpus=1,
-                     dist=True,
-                     shuffle=True,
-                     seed=None,
-                     **kwargs):
+def build_dataloader(
+    dataset, samples_per_gpu, workers_per_gpu, num_gpus=1, dist=True, shuffle=True, seed=None, **kwargs
+):
     """Build PyTorch DataLoader.
 
     In distributed training, each GPU/process has a dataloader.
@@ -106,11 +101,9 @@ def build_dataloader(dataset,
         # DistributedGroupSampler will definitely shuffle the data to satisfy
         # that images on each GPU are in the same group
         if shuffle:
-            sampler = DistributedGroupSampler(dataset, samples_per_gpu,
-                                              world_size, rank)
+            sampler = DistributedGroupSampler(dataset, samples_per_gpu, world_size, rank)
         else:
-            sampler = DistributedSampler(
-                dataset, world_size, rank, shuffle=False)
+            sampler = DistributedSampler(dataset, world_size, rank, shuffle=False)
         batch_size = samples_per_gpu
         num_workers = workers_per_gpu
     else:
@@ -118,9 +111,7 @@ def build_dataloader(dataset,
         batch_size = num_gpus * samples_per_gpu
         num_workers = num_gpus * workers_per_gpu
 
-    init_fn = partial(
-        worker_init_fn, num_workers=num_workers, rank=rank,
-        seed=seed) if seed is not None else None
+    init_fn = partial(worker_init_fn, num_workers=num_workers, rank=rank, seed=seed) if seed is not None else None
 
     data_loader = DataLoader(
         dataset,
@@ -130,7 +121,8 @@ def build_dataloader(dataset,
         collate_fn=partial(collate, samples_per_gpu=samples_per_gpu),
         pin_memory=False,
         worker_init_fn=init_fn,
-        **kwargs)
+        **kwargs
+    )
 
     return data_loader
 

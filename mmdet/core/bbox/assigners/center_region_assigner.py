@@ -17,10 +17,10 @@ def scale_boxes(bboxes, scale):
         (Tensor): Shape (m, 4). Scaled bboxes
     """
     assert bboxes.size(1) == 4
-    w_half = (bboxes[:, 2] - bboxes[:, 0]) * .5
-    h_half = (bboxes[:, 3] - bboxes[:, 1]) * .5
-    x_c = (bboxes[:, 2] + bboxes[:, 0]) * .5
-    y_c = (bboxes[:, 3] + bboxes[:, 1]) * .5
+    w_half = (bboxes[:, 2] - bboxes[:, 0]) * 0.5
+    h_half = (bboxes[:, 3] - bboxes[:, 1]) * 0.5
+    x_c = (bboxes[:, 2] + bboxes[:, 0]) * 0.5
+    y_c = (bboxes[:, 3] + bboxes[:, 1]) * 0.5
 
     w_half *= scale
     h_half *= scale
@@ -45,10 +45,12 @@ def is_located_in(points, bboxes):
     """
     assert points.size(1) == 2
     assert bboxes.size(1) == 4
-    return (points[:, 0].unsqueeze(1) > bboxes[:, 0].unsqueeze(0)) & \
-           (points[:, 0].unsqueeze(1) < bboxes[:, 2].unsqueeze(0)) & \
-           (points[:, 1].unsqueeze(1) > bboxes[:, 1].unsqueeze(0)) & \
-           (points[:, 1].unsqueeze(1) < bboxes[:, 3].unsqueeze(0))
+    return (
+        (points[:, 0].unsqueeze(1) > bboxes[:, 0].unsqueeze(0))
+        & (points[:, 0].unsqueeze(1) < bboxes[:, 2].unsqueeze(0))
+        & (points[:, 1].unsqueeze(1) > bboxes[:, 1].unsqueeze(0))
+        & (points[:, 1].unsqueeze(1) < bboxes[:, 3].unsqueeze(0))
+    )
 
 
 def bboxes_area(bboxes):
@@ -61,8 +63,8 @@ def bboxes_area(bboxes):
         Tensor: Area of the bboxes. Shape: (m, )
     """
     assert bboxes.size(1) == 4
-    w = (bboxes[:, 2] - bboxes[:, 0])
-    h = (bboxes[:, 3] - bboxes[:, 1])
+    w = bboxes[:, 2] - bboxes[:, 0]
+    h = bboxes[:, 3] - bboxes[:, 1]
     areas = w * h
     return areas
 
@@ -90,13 +92,15 @@ class CenterRegionAssigner(BaseAssigner):
           (ignored) region, otherwise it is set as ignored. Default to False.
     """
 
-    def __init__(self,
-                 pos_scale,
-                 neg_scale,
-                 min_pos_iof=1e-2,
-                 ignore_gt_scale=0.5,
-                 foreground_dominate=False,
-                 iou_calculator=dict(type='BboxOverlaps2D')):
+    def __init__(
+        self,
+        pos_scale,
+        neg_scale,
+        min_pos_iof=1e-2,
+        ignore_gt_scale=0.5,
+        foreground_dominate=False,
+        iou_calculator=dict(type="BboxOverlaps2D"),
+    ):
         self.pos_scale = pos_scale
         self.neg_scale = neg_scale
         self.min_pos_iof = min_pos_iof
@@ -169,7 +173,7 @@ class CenterRegionAssigner(BaseAssigner):
         # 5. Find pixels lying in the shadow of an object and assign them with
         #      background label, but set the loss weight of its corresponding
         #      gt to zero.
-        assert bboxes.size(1) == 4, 'bboxes must have size of 4'
+        assert bboxes.size(1) == 4, "bboxes must have size of 4"
         # 1. Find core positive and shadow region of every gt
         gt_core = scale_boxes(gt_bboxes, self.pos_scale)
         gt_shadow = scale_boxes(gt_bboxes, self.neg_scale)
@@ -180,40 +184,31 @@ class CenterRegionAssigner(BaseAssigner):
         is_bbox_in_gt = is_located_in(bbox_centers, gt_bboxes)
         # Only calculate bbox and gt_core IoF. This enables small prior bboxes
         #   to match large gts
-        bbox_and_gt_core_overlaps = self.iou_calculator(
-            bboxes, gt_core, mode='iof')
+        bbox_and_gt_core_overlaps = self.iou_calculator(bboxes, gt_core, mode="iof")
         # The center point of effective priors should be within the gt box
-        is_bbox_in_gt_core = is_bbox_in_gt & (
-            bbox_and_gt_core_overlaps > self.min_pos_iof)  # shape (n, k)
+        is_bbox_in_gt_core = is_bbox_in_gt & (bbox_and_gt_core_overlaps > self.min_pos_iof)  # shape (n, k)
 
-        is_bbox_in_gt_shadow = (
-            self.iou_calculator(bboxes, gt_shadow, mode='iof') >
-            self.min_pos_iof)
+        is_bbox_in_gt_shadow = self.iou_calculator(bboxes, gt_shadow, mode="iof") > self.min_pos_iof
         # Rule out center effective positive pixels
-        is_bbox_in_gt_shadow &= (~is_bbox_in_gt_core)
+        is_bbox_in_gt_shadow &= ~is_bbox_in_gt_core
 
         num_gts, num_bboxes = gt_bboxes.size(0), bboxes.size(0)
         if num_gts == 0 or num_bboxes == 0:
             # If no gts exist, assign all pixels to negative
-            assigned_gt_ids = \
-                is_bbox_in_gt_core.new_zeros((num_bboxes,),
-                                             dtype=torch.long)
+            assigned_gt_ids = is_bbox_in_gt_core.new_zeros((num_bboxes,), dtype=torch.long)
             pixels_in_gt_shadow = assigned_gt_ids.new_empty((0, 2))
         else:
             # Step 3: assign a one-hot gt id to each pixel, and smaller objects
             #    have high priority to assign the pixel.
             sort_idx = self.get_gt_priorities(gt_bboxes)
-            assigned_gt_ids, pixels_in_gt_shadow = \
-                self.assign_one_hot_gt_indices(is_bbox_in_gt_core,
-                                               is_bbox_in_gt_shadow,
-                                               gt_priority=sort_idx)
+            assigned_gt_ids, pixels_in_gt_shadow = self.assign_one_hot_gt_indices(
+                is_bbox_in_gt_core, is_bbox_in_gt_shadow, gt_priority=sort_idx
+            )
 
         if gt_bboxes_ignore is not None and gt_bboxes_ignore.numel() > 0:
             # No ground truth or boxes, return empty assignment
-            gt_bboxes_ignore = scale_boxes(
-                gt_bboxes_ignore, scale=self.ignore_gt_scale)
-            is_bbox_in_ignored_gts = is_located_in(bbox_centers,
-                                                   gt_bboxes_ignore)
+            gt_bboxes_ignore = scale_boxes(gt_bboxes_ignore, scale=self.ignore_gt_scale)
+            is_bbox_in_ignored_gts = is_located_in(bbox_centers, gt_bboxes_ignore)
             is_bbox_in_ignored_gts = is_bbox_in_ignored_gts.any(dim=1)
             assigned_gt_ids[is_bbox_in_ignored_gts] = -1
 
@@ -222,22 +217,19 @@ class CenterRegionAssigner(BaseAssigner):
         shadowed_pixel_labels = None
         if gt_labels is not None:
             # Default assigned label is the background (-1)
-            assigned_labels = assigned_gt_ids.new_full((num_bboxes, ), -1)
-            pos_inds = torch.nonzero(
-                assigned_gt_ids > 0, as_tuple=False).squeeze()
+            assigned_labels = assigned_gt_ids.new_full((num_bboxes,), -1)
+            pos_inds = torch.nonzero(assigned_gt_ids > 0, as_tuple=False).squeeze()
             if pos_inds.numel() > 0:
-                assigned_labels[pos_inds] = gt_labels[assigned_gt_ids[pos_inds]
-                                                      - 1]
+                assigned_labels[pos_inds] = gt_labels[assigned_gt_ids[pos_inds] - 1]
             # 5. Find pixels lying in the shadow of an object
             shadowed_pixel_labels = pixels_in_gt_shadow.clone()
             if pixels_in_gt_shadow.numel() > 0:
-                pixel_idx, gt_idx =\
-                    pixels_in_gt_shadow[:, 0], pixels_in_gt_shadow[:, 1]
-                assert (assigned_gt_ids[pixel_idx] != gt_idx).all(), \
-                    'Some pixels are dually assigned to ignore and gt!'
+                pixel_idx, gt_idx = pixels_in_gt_shadow[:, 0], pixels_in_gt_shadow[:, 1]
+                assert (
+                    assigned_gt_ids[pixel_idx] != gt_idx
+                ).all(), "Some pixels are dually assigned to ignore and gt!"
                 shadowed_pixel_labels[:, 1] = gt_labels[gt_idx - 1]
-                override = (
-                    assigned_labels[pixel_idx] == shadowed_pixel_labels[:, 1])
+                override = assigned_labels[pixel_idx] == shadowed_pixel_labels[:, 1]
                 if self.foreground_dominate:
                     # When a pixel is both positive and shadowed, set it as pos
                     shadowed_pixel_labels = shadowed_pixel_labels[~override]
@@ -246,17 +238,12 @@ class CenterRegionAssigner(BaseAssigner):
                     assigned_labels[pixel_idx[override]] = -1
                     assigned_gt_ids[pixel_idx[override]] = 0
 
-        assign_result = AssignResult(
-            num_gts, assigned_gt_ids, None, labels=assigned_labels)
+        assign_result = AssignResult(num_gts, assigned_gt_ids, None, labels=assigned_labels)
         # Add shadowed_labels as assign_result property. Shape: (num_shadow, 2)
-        assign_result.set_extra_property('shadowed_labels',
-                                         shadowed_pixel_labels)
+        assign_result.set_extra_property("shadowed_labels", shadowed_pixel_labels)
         return assign_result
 
-    def assign_one_hot_gt_indices(self,
-                                  is_bbox_in_gt_core,
-                                  is_bbox_in_gt_shadow,
-                                  gt_priority=None):
+    def assign_one_hot_gt_indices(self, is_bbox_in_gt_core, is_bbox_in_gt_shadow, gt_priority=None):
         """Assign only one gt index to each prior box.
 
         Gts with large gt_priority are more likely to be assigned.
@@ -285,13 +272,11 @@ class CenterRegionAssigner(BaseAssigner):
         num_bboxes, num_gts = is_bbox_in_gt_core.shape
 
         if gt_priority is None:
-            gt_priority = torch.arange(
-                num_gts, device=is_bbox_in_gt_core.device)
+            gt_priority = torch.arange(num_gts, device=is_bbox_in_gt_core.device)
         assert gt_priority.size(0) == num_gts
         # The bigger gt_priority, the more preferable to be assigned
         # The assigned inds are by default 0 (background)
-        assigned_gt_inds = is_bbox_in_gt_core.new_zeros((num_bboxes, ),
-                                                        dtype=torch.long)
+        assigned_gt_inds = is_bbox_in_gt_core.new_zeros((num_bboxes,), dtype=torch.long)
         # Shadowed bboxes are assigned to be background. But the corresponding
         #   label is ignored during loss calculation, which is done through
         #   shadowed_gt_inds
@@ -303,9 +288,7 @@ class CenterRegionAssigner(BaseAssigner):
         # The priority of each prior box and gt pair. If one prior box is
         #  matched bo multiple gts. Only the pair with the highest priority
         #  is saved
-        pair_priority = is_bbox_in_gt_core.new_full((num_bboxes, num_gts),
-                                                    -1,
-                                                    dtype=torch.long)
+        pair_priority = is_bbox_in_gt_core.new_full((num_bboxes, num_gts), -1, dtype=torch.long)
 
         # Each bbox could match with multiple gts.
         # The following codes deal with this situation
@@ -313,8 +296,7 @@ class CenterRegionAssigner(BaseAssigner):
         inds_of_match = torch.any(is_bbox_in_gt_core, dim=1)
         # The matched gt index of each positive bbox. Length >= num_pos_anchor
         #   , since one bbox could match multiple gts
-        matched_bbox_gt_inds = torch.nonzero(
-            is_bbox_in_gt_core, as_tuple=False)[:, 1]
+        matched_bbox_gt_inds = torch.nonzero(is_bbox_in_gt_core, as_tuple=False)[:, 1]
         # Assign priority to each bbox-gt pair.
         pair_priority[is_bbox_in_gt_core] = gt_priority[matched_bbox_gt_inds]
         _, argmax_priority = pair_priority[inds_of_match].max(dim=1)
@@ -323,10 +305,7 @@ class CenterRegionAssigner(BaseAssigner):
         is_bbox_in_gt_core[inds_of_match, argmax_priority] = 0
         # Concat the shadowed indices due to overlapping with that out side of
         #   effective scale. shape: (total_num_ignore, 2)
-        shadowed_gt_inds = torch.cat(
-            (shadowed_gt_inds, torch.nonzero(
-                is_bbox_in_gt_core, as_tuple=False)),
-            dim=0)
+        shadowed_gt_inds = torch.cat((shadowed_gt_inds, torch.nonzero(is_bbox_in_gt_core, as_tuple=False)), dim=0)
         # `is_bbox_in_gt_core` should be changed back to keep arguments intact.
         is_bbox_in_gt_core[inds_of_match, argmax_priority] = 1
         # 1-based shadowed gt indices, to be consistent with `assigned_gt_inds`

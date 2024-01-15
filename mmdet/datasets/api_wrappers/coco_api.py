@@ -1,9 +1,6 @@
 # Copyright (c) OpenMMLab. All rights reserved.
 # This file add snake case alias for coco api
 
-import warnings
-
-import pycocotools
 from pycocotools.coco import COCO as _COCO
 from pycocotools.cocoeval import COCOeval as _COCOeval
 

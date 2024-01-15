@@ -1,10 +1,9 @@
-from collections.abc import Sequence
-
 import mmcv
 import numpy as np
 import torch
 from mmcv.parallel import DataContainer as DC
 
+from collections.abc import Sequence
 from ..builder import PIPELINES
 
 
@@ -30,7 +29,7 @@ def to_tensor(data):
     elif isinstance(data, float):
         return torch.FloatTensor([data])
     else:
-        raise TypeError(f'type {type(data)} cannot be converted to tensor.')
+        raise TypeError(f"type {type(data)} cannot be converted to tensor.")
 
 
 @PIPELINES.register_module()
@@ -59,7 +58,7 @@ class ToTensor(object):
         return results
 
     def __repr__(self):
-        return self.__class__.__name__ + f'(keys={self.keys})'
+        return self.__class__.__name__ + f"(keys={self.keys})"
 
 
 @PIPELINES.register_module()
@@ -96,7 +95,7 @@ class ImageToTensor(object):
         return results
 
     def __repr__(self):
-        return self.__class__.__name__ + f'(keys={self.keys})'
+        return self.__class__.__name__ + f"(keys={self.keys})"
 
 
 @PIPELINES.register_module()
@@ -127,8 +126,7 @@ class Transpose(object):
         return results
 
     def __repr__(self):
-        return self.__class__.__name__ + \
-            f'(keys={self.keys}, order={self.order})'
+        return self.__class__.__name__ + f"(keys={self.keys}, order={self.order})"
 
 
 @PIPELINES.register_module()
@@ -143,9 +141,7 @@ class ToDataContainer(object):
             dict(key='gt_labels'))``.
     """
 
-    def __init__(self,
-                 fields=(dict(key='img', stack=True), dict(key='gt_bboxes'),
-                         dict(key='gt_labels'))):
+    def __init__(self, fields=(dict(key="img", stack=True), dict(key="gt_bboxes"), dict(key="gt_labels"))):
         self.fields = fields
 
     def __call__(self, results):
@@ -162,12 +158,12 @@ class ToDataContainer(object):
 
         for field in self.fields:
             field = field.copy()
-            key = field.pop('key')
+            key = field.pop("key")
             results[key] = DC(results[key], **field)
         return results
 
     def __repr__(self):
-        return self.__class__.__name__ + f'(fields={self.fields})'
+        return self.__class__.__name__ + f"(fields={self.fields})"
 
 
 @PIPELINES.register_module()
@@ -199,23 +195,22 @@ class DefaultFormatBundle(object):
                 default bundle.
         """
 
-        if 'img' in results:
-            img = results['img']
+        if "img" in results:
+            img = results["img"]
             # add default meta keys
             results = self._add_default_meta_keys(results)
             if len(img.shape) < 3:
                 img = np.expand_dims(img, -1)
             img = np.ascontiguousarray(img.transpose(2, 0, 1))
-            results['img'] = DC(to_tensor(img), stack=True)
-        for key in ['proposals', 'gt_bboxes', 'gt_bboxes_ignore', 'gt_labels']:
+            results["img"] = DC(to_tensor(img), stack=True)
+        for key in ["proposals", "gt_bboxes", "gt_bboxes_ignore", "gt_labels"]:
             if key not in results:
                 continue
             results[key] = DC(to_tensor(results[key]))
-        if 'gt_masks' in results:
-            results['gt_masks'] = DC(results['gt_masks'], cpu_only=True)
-        if 'gt_semantic_seg' in results:
-            results['gt_semantic_seg'] = DC(
-                to_tensor(results['gt_semantic_seg'][None, ...]), stack=True)
+        if "gt_masks" in results:
+            results["gt_masks"] = DC(results["gt_masks"], cpu_only=True)
+        if "gt_semantic_seg" in results:
+            results["gt_semantic_seg"] = DC(to_tensor(results["gt_semantic_seg"][None, ...]), stack=True)
         return results
 
     def _add_default_meta_keys(self, results):
@@ -231,16 +226,18 @@ class DefaultFormatBundle(object):
         Returns:
             results (dict): Updated result dict contains the data to convert.
         """
-        img = results['img']
-        results.setdefault('pad_shape', img.shape)
-        results.setdefault('scale_factor', 1.0)
+        img = results["img"]
+        results.setdefault("pad_shape", img.shape)
+        results.setdefault("scale_factor", 1.0)
         num_channels = 1 if len(img.shape) < 3 else img.shape[2]
         results.setdefault(
-            'img_norm_cfg',
+            "img_norm_cfg",
             dict(
                 mean=np.zeros(num_channels, dtype=np.float32),
                 std=np.ones(num_channels, dtype=np.float32),
-                to_rgb=False))
+                to_rgb=False,
+            ),
+        )
         return results
 
     def __repr__(self):
@@ -287,11 +284,21 @@ class Collect(object):
             'img_norm_cfg')``
     """
 
-    def __init__(self,
-                 keys,
-                 meta_keys=('filename', 'ori_filename', 'ori_shape',
-                            'img_shape', 'pad_shape', 'scale_factor', 'flip',
-                            'flip_direction', 'img_norm_cfg')):
+    def __init__(
+        self,
+        keys,
+        meta_keys=(
+            "filename",
+            "ori_filename",
+            "ori_shape",
+            "img_shape",
+            "pad_shape",
+            "scale_factor",
+            "flip",
+            "flip_direction",
+            "img_norm_cfg",
+        ),
+    ):
         self.keys = keys
         self.meta_keys = meta_keys
 
@@ -313,14 +320,13 @@ class Collect(object):
         img_meta = {}
         for key in self.meta_keys:
             img_meta[key] = results[key]
-        data['img_metas'] = DC(img_meta, cpu_only=True)
+        data["img_metas"] = DC(img_meta, cpu_only=True)
         for key in self.keys:
             data[key] = results[key]
         return data
 
     def __repr__(self):
-        return self.__class__.__name__ + \
-            f'(keys={self.keys}, meta_keys={self.meta_keys})'
+        return self.__class__.__name__ + f"(keys={self.keys}, meta_keys={self.meta_keys})"
 
 
 @PIPELINES.register_module()
@@ -361,4 +367,4 @@ class WrapFieldsToLists(object):
         return results
 
     def __repr__(self):
-        return f'{self.__class__.__name__}()'
+        return f"{self.__class__.__name__}()"

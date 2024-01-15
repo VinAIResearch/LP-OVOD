@@ -1,6 +1,7 @@
 from mmcv.utils import Registry, build_from_cfg
 
-MATCH_COST = Registry('Match Cost')
+
+MATCH_COST = Registry("Match Cost")
 
 
 def build_match_cost(cfg, default_args=None):

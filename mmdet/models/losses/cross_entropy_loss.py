@@ -6,12 +6,7 @@ from ..builder import LOSSES
 from .utils import weight_reduce_loss
 
 
-def cross_entropy(pred,
-                  label,
-                  weight=None,
-                  reduction='mean',
-                  avg_factor=None,
-                  class_weight=None):
+def cross_entropy(pred, label, weight=None, reduction="mean", avg_factor=None, class_weight=None):
     """Calculate the CrossEntropy loss.
 
     Args:
@@ -28,39 +23,31 @@ def cross_entropy(pred,
         torch.Tensor: The calculated loss
     """
     # element-wise losses
-    loss = F.cross_entropy(pred, label, weight=class_weight, reduction='none')
+    loss = F.cross_entropy(pred, label, weight=class_weight, reduction="none")
 
     # apply weights and do the reduction
     if weight is not None:
         weight = weight.float()
-    loss = weight_reduce_loss(
-        loss, weight=weight, reduction=reduction, avg_factor=avg_factor)
+    loss = weight_reduce_loss(loss, weight=weight, reduction=reduction, avg_factor=avg_factor)
 
     return loss
 
 
 def _expand_onehot_labels(labels, label_weights, label_channels):
     bin_labels = labels.new_full((labels.size(0), label_channels), 0)
-    inds = torch.nonzero(
-        (labels >= 0) & (labels < label_channels), as_tuple=False).squeeze()
+    inds = torch.nonzero((labels >= 0) & (labels < label_channels), as_tuple=False).squeeze()
     if inds.numel() > 0:
         bin_labels[inds, labels[inds]] = 1
 
     if label_weights is None:
         bin_label_weights = None
     else:
-        bin_label_weights = label_weights.view(-1, 1).expand(
-            label_weights.size(0), label_channels)
+        bin_label_weights = label_weights.view(-1, 1).expand(label_weights.size(0), label_channels)
 
     return bin_labels, bin_label_weights
 
 
-def binary_cross_entropy(pred,
-                         label,
-                         weight=None,
-                         reduction='mean',
-                         avg_factor=None,
-                         class_weight=None):
+def binary_cross_entropy(pred, label, weight=None, reduction="mean", avg_factor=None, class_weight=None):
     """Calculate the binary CrossEntropy loss.
 
     Args:
@@ -82,21 +69,14 @@ def binary_cross_entropy(pred,
     # weighted element-wise losses
     if weight is not None:
         weight = weight.float()
-    loss = F.binary_cross_entropy_with_logits(
-        pred, label.float(), pos_weight=class_weight, reduction='none')
+    loss = F.binary_cross_entropy_with_logits(pred, label.float(), pos_weight=class_weight, reduction="none")
     # do the reduction for the weighted loss
-    loss = weight_reduce_loss(
-        loss, weight, reduction=reduction, avg_factor=avg_factor)
+    loss = weight_reduce_loss(loss, weight, reduction=reduction, avg_factor=avg_factor)
 
     return loss
 
 
-def mask_cross_entropy(pred,
-                       target,
-                       label,
-                       reduction='mean',
-                       avg_factor=None,
-                       class_weight=None):
+def mask_cross_entropy(pred, target, label, reduction="mean", avg_factor=None, class_weight=None):
     """Calculate the CrossEntropy loss for masks.
 
     Args:
@@ -117,23 +97,16 @@ def mask_cross_entropy(pred,
         torch.Tensor: The calculated loss
     """
     # TODO: handle these two reserved arguments
-    assert reduction == 'mean' and avg_factor is None
+    assert reduction == "mean" and avg_factor is None
     num_rois = pred.size()[0]
     inds = torch.arange(0, num_rois, dtype=torch.long, device=pred.device)
     pred_slice = pred[inds, label].squeeze(1)
-    return F.binary_cross_entropy_with_logits(
-        pred_slice, target, weight=class_weight, reduction='mean')[None]
+    return F.binary_cross_entropy_with_logits(pred_slice, target, weight=class_weight, reduction="mean")[None]
 
 
 @LOSSES.register_module()
 class CrossEntropyLoss(nn.Module):
-
-    def __init__(self,
-                 use_sigmoid=False,
-                 use_mask=False,
-                 reduction='mean',
-                 class_weight=None,
-                 loss_weight=1.0):
+    def __init__(self, use_sigmoid=False, use_mask=False, reduction="mean", class_weight=None, loss_weight=1.0):
         """CrossEntropyLoss.
 
         Args:
@@ -162,13 +135,7 @@ class CrossEntropyLoss(nn.Module):
         else:
             self.cls_criterion = cross_entropy
 
-    def forward(self,
-                cls_score,
-                label,
-                weight=None,
-                avg_factor=None,
-                reduction_override=None,
-                **kwargs):
+    def forward(self, cls_score, label, weight=None, avg_factor=None, reduction_override=None, **kwargs):
         """Forward function.
 
         Args:
@@ -182,20 +149,13 @@ class CrossEntropyLoss(nn.Module):
         Returns:
             torch.Tensor: The calculated loss
         """
-        assert reduction_override in (None, 'none', 'mean', 'sum')
-        reduction = (
-            reduction_override if reduction_override else self.reduction)
+        assert reduction_override in (None, "none", "mean", "sum")
+        reduction = reduction_override if reduction_override else self.reduction
         if self.class_weight is not None:
-            class_weight = cls_score.new_tensor(
-                self.class_weight, device=cls_score.device)
+            class_weight = cls_score.new_tensor(self.class_weight, device=cls_score.device)
         else:
             class_weight = None
         loss_cls = self.loss_weight * self.cls_criterion(
-            cls_score,
-            label,
-            weight,
-            class_weight=class_weight,
-            reduction=reduction,
-            avg_factor=avg_factor,
-            **kwargs)
+            cls_score, label, weight, class_weight=class_weight, reduction=reduction, avg_factor=avg_factor, **kwargs
+        )
         return loss_cls

@@ -1,5 +1,3 @@
-import warnings
-
 import matplotlib.pyplot as plt
 import mmcv
 import numpy as np
@@ -8,12 +6,13 @@ from mmcv.ops import RoIPool
 from mmcv.parallel import collate, scatter
 from mmcv.runner import load_checkpoint
 
+import warnings
 from mmdet.core import get_classes
 from mmdet.datasets.pipelines import Compose
 from mmdet.models import build_detector
 
 
-def init_detector(config, checkpoint=None, device='cuda:0', cfg_options=None):
+def init_detector(config, checkpoint=None, device="cuda:0", cfg_options=None):
     """Initialize a detector from config file.
 
     Args:
@@ -30,22 +29,20 @@ def init_detector(config, checkpoint=None, device='cuda:0', cfg_options=None):
     if isinstance(config, str):
         config = mmcv.Config.fromfile(config)
     elif not isinstance(config, mmcv.Config):
-        raise TypeError('config must be a filename or Config object, '
-                        f'but got {type(config)}')
+        raise TypeError("config must be a filename or Config object, " f"but got {type(config)}")
     if cfg_options is not None:
         config.merge_from_dict(cfg_options)
     config.model.pretrained = None
     model = build_detector(config.model, test_cfg=config.test_cfg)
     if checkpoint is not None:
-        map_loc = 'cpu' if device == 'cpu' else None
+        map_loc = "cpu" if device == "cpu" else None
         checkpoint = load_checkpoint(model, checkpoint, map_location=map_loc)
-        if 'CLASSES' in checkpoint['meta']:
-            model.CLASSES = checkpoint['meta']['CLASSES']
+        if "CLASSES" in checkpoint["meta"]:
+            model.CLASSES = checkpoint["meta"]["CLASSES"]
         else:
-            warnings.simplefilter('once')
-            warnings.warn('Class names are not saved in the checkpoint\'s '
-                          'meta data, use COCO classes by default.')
-            model.CLASSES = get_classes('coco')
+            warnings.simplefilter("once")
+            warnings.warn("Class names are not saved in the checkpoint's " "meta data, use COCO classes by default.")
+            model.CLASSES = get_classes("coco")
     model.cfg = config  # save the config in the model for convenience
     model.to(device)
     model.eval()
@@ -65,17 +62,17 @@ class LoadImage(object):
         Returns:
             dict: ``results`` will be returned containing loaded image.
         """
-        if isinstance(results['img'], str):
-            results['filename'] = results['img']
-            results['ori_filename'] = results['img']
+        if isinstance(results["img"], str):
+            results["filename"] = results["img"]
+            results["ori_filename"] = results["img"]
         else:
-            results['filename'] = None
-            results['ori_filename'] = None
-        img = mmcv.imread(results['img'])
-        results['img'] = img
-        results['img_fields'] = ['img']
-        results['img_shape'] = img.shape
-        results['ori_shape'] = img.shape
+            results["filename"] = None
+            results["ori_filename"] = None
+        img = mmcv.imread(results["img"])
+        results["img"] = img
+        results["img_fields"] = ["img"]
+        results["img_shape"] = img.shape
+        results["ori_shape"] = img.shape
         return results
 
 
@@ -99,7 +96,7 @@ def inference_detector(model, img):
         data = dict(img=img)
         cfg = cfg.copy()
         # set loading pipeline type
-        cfg.data.test.pipeline[0].type = 'LoadImageFromWebcam'
+        cfg.data.test.pipeline[0].type = "LoadImageFromWebcam"
     else:
         # add information into dict
         data = dict(img_info=dict(filename=img), img_prefix=None)
@@ -112,11 +109,9 @@ def inference_detector(model, img):
         data = scatter(data, [device])[0]
     else:
         for m in model.modules():
-            assert not isinstance(
-                m, RoIPool
-            ), 'CPU inference with RoIPool is not supported currently.'
+            assert not isinstance(m, RoIPool), "CPU inference with RoIPool is not supported currently."
         # just get the actual data from DataContainer
-        data['img_metas'] = data['img_metas'][0].data
+        data["img_metas"] = data["img_metas"][0].data
 
     # forward the model
     with torch.no_grad():
@@ -142,7 +137,7 @@ async def async_inference_detector(model, img):
         data = dict(img=img)
         cfg = cfg.copy()
         # set loading pipeline type
-        cfg.data.test.pipeline[0].type = 'LoadImageFromWebcam'
+        cfg.data.test.pipeline[0].type = "LoadImageFromWebcam"
     else:
         # add information into dict
         data = dict(img_info=dict(filename=img), img_prefix=None)
@@ -158,13 +153,7 @@ async def async_inference_detector(model, img):
     return result
 
 
-def show_result_pyplot(model,
-                       img,
-                       result,
-                       score_thr=0.3,
-                       fig_size=(15, 10),
-                       title='result',
-                       block=True):
+def show_result_pyplot(model, img, result, score_thr=0.3, fig_size=(15, 10), title="result", block=True):
     """Visualize the detection results on the image.
 
     Args:
@@ -177,7 +166,7 @@ def show_result_pyplot(model,
         title (str): Title of the pyplot figure.
         block (bool): Whether to block GUI.
     """
-    if hasattr(model, 'module'):
+    if hasattr(model, "module"):
         model = model.module
     img = model.show_result(img, result, score_thr=score_thr, show=False)
     plt.figure(figsize=fig_size)
@@ -187,13 +176,9 @@ def show_result_pyplot(model,
     plt.show(block=block)
 
 
-def save_result_pyplot(model,
-                       img,
-                       result,
-                       score_thr=0.3,
-                       fig_size=(15, 10),
-                       title='result',
-                       block=True, file_path=None):
+def save_result_pyplot(
+    model, img, result, score_thr=0.3, fig_size=(15, 10), title="result", block=True, file_path=None
+):
     """Visualize the detection results on the image.
 
     Args:
@@ -206,7 +191,7 @@ def save_result_pyplot(model,
         title (str): Title of the pyplot figure.
         block (bool): Whether to block GUI.
     """
-    if hasattr(model, 'module'):
+    if hasattr(model, "module"):
         model = model.module
     img = model.show_result(img, result, score_thr=score_thr, show=False)
     plt.figure(figsize=fig_size)

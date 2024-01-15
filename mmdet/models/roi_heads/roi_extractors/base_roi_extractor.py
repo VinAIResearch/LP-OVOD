@@ -1,8 +1,8 @@
-from abc import ABCMeta, abstractmethod
-
 import torch
 import torch.nn as nn
 from mmcv import ops
+
+from abc import ABCMeta, abstractmethod
 
 
 class BaseRoIExtractor(nn.Module, metaclass=ABCMeta):
@@ -47,11 +47,10 @@ class BaseRoIExtractor(nn.Module, metaclass=ABCMeta):
         """
 
         cfg = layer_cfg.copy()
-        layer_type = cfg.pop('type')
+        layer_type = cfg.pop("type")
         assert hasattr(ops, layer_type)
         layer_cls = getattr(ops, layer_type)
-        roi_layers = nn.ModuleList(
-            [layer_cls(spatial_scale=1 / s, **cfg) for s in featmap_strides])
+        roi_layers = nn.ModuleList([layer_cls(spatial_scale=1 / s, **cfg) for s in featmap_strides])
         return roi_layers
 
     def roi_rescale(self, rois, scale_factor):

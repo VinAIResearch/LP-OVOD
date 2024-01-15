@@ -1,18 +1,18 @@
-from collections import OrderedDict
-from typing import Tuple, Union
-
-import numpy as np
 import torch
 import torch.nn.functional as F
-from torch import nn
-import warnings
-from torchvision.transforms import Compose, Resize, CenterCrop, ToTensor, Normalize
 from PIL import Image
+from torch import nn
+
 import math
+from collections import OrderedDict
 from torchvision.ops import roi_align
+from torchvision.transforms import CenterCrop, Compose, Normalize, Resize, ToTensor
+from typing import Union
+
 
 try:
     from torchvision.transforms import InterpolationMode
+
     BICUBIC = InterpolationMode.BICUBIC
 except ImportError:
     BICUBIC = Image.BICUBIC
@@ -44,11 +44,15 @@ class Bottleneck(nn.Module):
 
         if stride > 1 or inplanes != planes * Bottleneck.expansion:
             # downsampling layer is prepended with an avgpool, and the subsequent convolution has stride 1
-            self.downsample = nn.Sequential(OrderedDict([
-                ("-1", nn.AvgPool2d(stride)),
-                ("0", nn.Conv2d(inplanes, planes * self.expansion, 1, stride=1, bias=False)),
-                ("1", nn.BatchNorm2d(planes * self.expansion))
-            ]))
+            self.downsample = nn.Sequential(
+                OrderedDict(
+                    [
+                        ("-1", nn.AvgPool2d(stride)),
+                        ("0", nn.Conv2d(inplanes, planes * self.expansion, 1, stride=1, bias=False)),
+                        ("1", nn.BatchNorm2d(planes * self.expansion)),
+                    ]
+                )
+            )
 
     def forward(self, x: torch.Tensor):
         identity = x
@@ -69,7 +73,7 @@ class Bottleneck(nn.Module):
 class AttentionPool2d(nn.Module):
     def __init__(self, spacial_dim: int, embed_dim: int, num_heads: int, output_dim: int = None):
         super().__init__()
-        self.positional_embedding = nn.Parameter(torch.randn(spacial_dim ** 2 + 1, embed_dim) / embed_dim ** 0.5)
+        self.positional_embedding = nn.Parameter(torch.randn(spacial_dim**2 + 1, embed_dim) / embed_dim**0.5)
         self.k_proj = nn.Linear(embed_dim, embed_dim)
         self.q_proj = nn.Linear(embed_dim, embed_dim)
         self.v_proj = nn.Linear(embed_dim, embed_dim)
@@ -81,7 +85,9 @@ class AttentionPool2d(nn.Module):
         x = torch.cat([x.mean(dim=0, keepdim=True), x], dim=0)  # (HW+1)NC
         x = x + self.positional_embedding[:, None, :].to(x.dtype)  # (HW+1)NC
         x, _ = F.multi_head_attention_forward(
-            query=x[:1], key=x, value=x,
+            query=x[:1],
+            key=x,
+            value=x,
             embed_dim_to_check=x.shape[-1],
             num_heads=self.num_heads,
             q_proj_weight=self.q_proj.weight,
@@ -97,7 +103,7 @@ class AttentionPool2d(nn.Module):
             out_proj_bias=self.c_proj.bias,
             use_separate_proj_weight=True,
             training=self.training,
-            need_weights=False
+            need_weights=False,
         )
         return x.squeeze(0)
 
@@ -163,9 +169,10 @@ class ModifiedResNet(nn.Module):
         x = self.attnpool(x)
 
         return x
-    
+
     def forward_roi(self, x: torch.Tensor, bboxes: torch.Tensor, roi_outputs="res4"):
         assert roi_outputs in ["res1", "res2", "res3", "res4"], "Outputs must be res[1-4]"
+
         def stem(x):
             x = self.relu1(self.bn1(self.conv1(x)))
             x = self.relu2(self.bn2(self.conv2(x)))
@@ -177,20 +184,34 @@ class ModifiedResNet(nn.Module):
         x = stem(x)
         x = self.layer1(x)
         if roi_outputs == "res1":
-            x = roi_align(x, bboxes, output_size=self.input_resolution // 4, 
-                      spatial_scale=1/4, sampling_ratio=0, aligned=True)
+            x = roi_align(
+                x, bboxes, output_size=self.input_resolution // 4, spatial_scale=1 / 4, sampling_ratio=0, aligned=True
+            )
         x = self.layer2(x)
         if roi_outputs == "res2":
-            x = roi_align(x, bboxes, output_size=self.input_resolution // 8, 
-                      spatial_scale=1/8, sampling_ratio=0, aligned=True)
+            x = roi_align(
+                x, bboxes, output_size=self.input_resolution // 8, spatial_scale=1 / 8, sampling_ratio=0, aligned=True
+            )
         x = self.layer3(x)
         if roi_outputs == "res3":
-            x = roi_align(x, bboxes, output_size=self.input_resolution // 16, 
-                      spatial_scale=1/16, sampling_ratio=0, aligned=True)
+            x = roi_align(
+                x,
+                bboxes,
+                output_size=self.input_resolution // 16,
+                spatial_scale=1 / 16,
+                sampling_ratio=0,
+                aligned=True,
+            )
         x = self.layer4(x)
         if roi_outputs == "res4":
-            x = roi_align(x, bboxes, output_size=self.input_resolution // 32, 
-                      spatial_scale=1/32, sampling_ratio=0, aligned=True)
+            x = roi_align(
+                x,
+                bboxes,
+                output_size=self.input_resolution // 32,
+                spatial_scale=1 / 32,
+                sampling_ratio=0,
+                aligned=True,
+            )
         x = self.attnpool(x)
 
         return x
@@ -216,11 +237,15 @@ class ResidualAttentionBlock(nn.Module):
 
         self.attn = nn.MultiheadAttention(d_model, n_head)
         self.ln_1 = LayerNorm(d_model)
-        self.mlp = nn.Sequential(OrderedDict([
-            ("c_fc", nn.Linear(d_model, d_model * 4)),
-            ("gelu", QuickGELU()),
-            ("c_proj", nn.Linear(d_model * 4, d_model))
-        ]))
+        self.mlp = nn.Sequential(
+            OrderedDict(
+                [
+                    ("c_fc", nn.Linear(d_model, d_model * 4)),
+                    ("gelu", QuickGELU()),
+                    ("c_proj", nn.Linear(d_model * 4, d_model)),
+                ]
+            )
+        )
         self.ln_2 = LayerNorm(d_model)
         self.attn_mask = attn_mask
 
@@ -245,30 +270,35 @@ class Transformer(nn.Module):
         for block in self.resblocks:
             x = block(x)
         return x
-    
+
     def forward_pre_layers(self, x, n: int):
         assert n >= 0 and n <= self.layers, f"n must be between 0 and {self.layers} (inclusive)"
         for i, block in enumerate(self.resblocks):
             if i == n:
                 return x
             x = block(x)
-            
+
     def forward_post_layers(self, x, n: int):
         assert n >= 0 and n <= self.layers, f"n must be between 0 and {self.layers} (inclusive)"
         for i, block in enumerate(self.resblocks[n:]):
             x = block(x)
         return x
 
+
 class VisionTransformer(nn.Module):
-    def __init__(self, input_resolution: int, patch_size: int, width: int, layers: int, heads: int, output_dim: int, output: str):
+    def __init__(
+        self, input_resolution: int, patch_size: int, width: int, layers: int, heads: int, output_dim: int, output: str
+    ):
         super().__init__()
         self.input_resolution = input_resolution
         self.output_dim = output_dim
         self.patch_size = patch_size
         self.output = output
-        self.conv1 = nn.Conv2d(in_channels=3, out_channels=width, kernel_size=patch_size, stride=patch_size, bias=False)
+        self.conv1 = nn.Conv2d(
+            in_channels=3, out_channels=width, kernel_size=patch_size, stride=patch_size, bias=False
+        )
 
-        scale = width ** -0.5
+        scale = width**-0.5
         self.class_embedding = nn.Parameter(scale * torch.randn(width))
         self.positional_embedding = nn.Parameter(scale * torch.randn((input_resolution // patch_size) ** 2 + 1, width))
         self.ln_pre = LayerNorm(width)
@@ -277,7 +307,7 @@ class VisionTransformer(nn.Module):
 
         self.ln_post = LayerNorm(width)
         self.proj = nn.Parameter(scale * torch.randn(width, output_dim))
-        
+
     def interpolate_pos_encoding(self, x, w, h):
         npatch = x.shape[1] - 1
         N = self.positional_embedding.shape[0] - 1
@@ -294,34 +324,43 @@ class VisionTransformer(nn.Module):
         patch_pos_embed = nn.functional.interpolate(
             patch_pos_embed.reshape(1, int(math.sqrt(N)), int(math.sqrt(N)), dim).permute(0, 3, 1, 2),
             scale_factor=(w0 / math.sqrt(N), h0 / math.sqrt(N)),
-            mode='bicubic', recompute_scale_factor=True, align_corners=False
+            mode="bicubic",
+            recompute_scale_factor=True,
+            align_corners=False,
         )
         assert int(w0) == patch_pos_embed.shape[-2] and int(h0) == patch_pos_embed.shape[-1]
         patch_pos_embed = patch_pos_embed.permute(0, 2, 3, 1).view(-1, dim)
         return torch.cat((class_pos_embed.unsqueeze(0), patch_pos_embed), dim=0)
-    
+
     def prepare_tokens(self, x: torch.Tensor):
         B, nc, w, h = x.shape
         x = self.conv1(x)  # shape = [*, width, grid, grid]
         x = x.reshape(x.shape[0], x.shape[1], -1)  # shape = [*, width, grid ** 2]
         x = x.permute(0, 2, 1)  # shape = [*, grid ** 2, width]
-        x = torch.cat([self.class_embedding.to(x.dtype) + torch.zeros(x.shape[0], 1, x.shape[-1], dtype=x.dtype, device=x.device), x], dim=1)  # shape = [*, grid ** 2 + 1, width]
+        x = torch.cat(
+            [
+                self.class_embedding.to(x.dtype)
+                + torch.zeros(x.shape[0], 1, x.shape[-1], dtype=x.dtype, device=x.device),
+                x,
+            ],
+            dim=1,
+        )  # shape = [*, grid ** 2 + 1, width]
         # x = x + self.positional_embedding.to(x.dtype)
         x = x + self.interpolate_pos_encoding(x, w, h).to(x.dtype)
         x = self.ln_pre(x)
 
         x = x.permute(1, 0, 2)  # NLD -> LND
         return x
-    
+
     def get_intermediate_layers(self, x: torch.Tensor, n: int):
         x = self.prepare_tokens(x)
         # x = self.transformer(x)
         x = self.transformer.forward_pre_layers(x, n)
-        x = x.permute(1, 2, 0) # LND -> NDL
-        return x 
-    
+        x = x.permute(1, 2, 0)  # LND -> NDL
+        return x
+
     def forward_intermediate_layers(self, x: torch.Tensor, n: int):
-        x = x.permute(2, 0, 1) # NDL -> LND
+        x = x.permute(2, 0, 1)  # NDL -> LND
         x = self.transformer.forward_post_layers(x, n)
         x = x.permute(1, 0, 2)  # LND -> NLD
 
@@ -330,16 +369,29 @@ class VisionTransformer(nn.Module):
         if self.proj is not None:
             x = x @ self.proj
 
-        return x 
-    
+        return x
+
     def forward_roi(self, x: torch.Tensor, bboxes: torch.Tensor):
         x = self.conv1(x)  # shape = [*, width, grid, grid]
-        
-        x = roi_align(x, bboxes, output_size=self.input_resolution // self.patch_size, 
-                      spatial_scale=1/self.patch_size, sampling_ratio=0, aligned=True)
+
+        x = roi_align(
+            x,
+            bboxes,
+            output_size=self.input_resolution // self.patch_size,
+            spatial_scale=1 / self.patch_size,
+            sampling_ratio=0,
+            aligned=True,
+        )
         x = x.reshape(x.shape[0], x.shape[1], -1)  # shape = [*, width, grid ** 2]
         x = x.permute(0, 2, 1)  # shape = [*, grid ** 2, width]
-        x = torch.cat([self.class_embedding.to(x.dtype) + torch.zeros(x.shape[0], 1, x.shape[-1], dtype=x.dtype, device=x.device), x], dim=1)  # shape = [*, grid ** 2 + 1, width]
+        x = torch.cat(
+            [
+                self.class_embedding.to(x.dtype)
+                + torch.zeros(x.shape[0], 1, x.shape[-1], dtype=x.dtype, device=x.device),
+                x,
+            ],
+            dim=1,
+        )  # shape = [*, grid ** 2 + 1, width]
         x = x + self.positional_embedding.to(x.dtype)
         x = self.ln_pre(x)
 
@@ -357,7 +409,7 @@ class VisionTransformer(nn.Module):
         if self.proj is not None:
             x = x @ self.proj
 
-        return x    
+        return x
 
     def forward(self, x: torch.Tensor):
         x = self.prepare_tokens(x)
@@ -375,10 +427,9 @@ class VisionTransformer(nn.Module):
             x = x @ self.proj
 
         return x
-    
 
-def build_model_vit(image_resolution, vision_patch_size, vision_width, 
-                    vision_layers, embed_dim, output):
+
+def build_model_vit(image_resolution, vision_patch_size, vision_width, vision_layers, embed_dim, output):
     vision_heads = vision_width // 64
     return VisionTransformer(
         input_resolution=image_resolution,
@@ -387,20 +438,19 @@ def build_model_vit(image_resolution, vision_patch_size, vision_width,
         layers=vision_layers,
         heads=vision_heads,
         output_dim=embed_dim,
-        output=output
+        output=output,
     )
-    
-    
-def build_model_resnet(image_resolution, vision_patch_size, 
-                       vision_width, vision_layers, embed_dim):
+
+
+def build_model_resnet(image_resolution, vision_patch_size, vision_width, vision_layers, embed_dim):
     vision_heads = vision_width * 32 // 64
     return ModifiedResNet(
         layers=vision_layers,
         output_dim=embed_dim,
         heads=vision_heads,
         input_resolution=image_resolution,
-        width=vision_width
-    ) 
+        width=vision_width,
+    )
 
 
 def convert_weights(model: nn.Module):
@@ -432,19 +482,20 @@ def _convert_image_to_rgb(image):
 
 
 def _transform(n_px):
-    return Compose([
-        Resize(n_px, interpolation=BICUBIC),
-        CenterCrop(n_px),
-        _convert_image_to_rgb,
-        ToTensor(),
-        Normalize((0.48145466, 0.4578275, 0.40821073), (0.26862954, 0.26130258, 0.27577711)),
-    ])
+    return Compose(
+        [
+            Resize(n_px, interpolation=BICUBIC),
+            CenterCrop(n_px),
+            _convert_image_to_rgb,
+            ToTensor(),
+            Normalize((0.48145466, 0.4578275, 0.40821073), (0.26862954, 0.26130258, 0.27577711)),
+        ]
+    )
 
 
-def build_model_visual(model_path: str,
-                       device: Union[str, torch.device] = "cuda" if torch.cuda.is_available() else "cpu",
-                       output="cls"):
-    
+def build_model_visual(
+    model_path: str, device: Union[str, torch.device] = "cuda" if torch.cuda.is_available() else "cpu", output="cls"
+):
     assert output in ["cls", "pooling"]
     state_dict = torch.load(model_path, map_location="cpu")
 
@@ -456,26 +507,26 @@ def build_model_visual(model_path: str,
         vision_patch_size = state_dict["conv1.weight"].shape[-1]
         grid_size = round((state_dict["positional_embedding"].shape[0] - 1) ** 0.5)
         image_resolution = vision_patch_size * grid_size
-        
-        model = build_model_vit(image_resolution, vision_patch_size, 
-                                vision_width, vision_layers, embed_dim, output)
+
+        model = build_model_vit(image_resolution, vision_patch_size, vision_width, vision_layers, embed_dim, output)
     else:
-        counts: list = [len(set(k.split(".")[1] for k in state_dict if k.startswith(f"layer{b}"))) for b in [1, 2, 3, 4]]
+        counts: list = [
+            len(set(k.split(".")[1] for k in state_dict if k.startswith(f"layer{b}"))) for b in [1, 2, 3, 4]
+        ]
         vision_layers = tuple(counts)
         vision_width = state_dict["layer1.0.conv1.weight"].shape[0]
         output_width = round((state_dict["attnpool.positional_embedding"].shape[0] - 1) ** 0.5)
         vision_patch_size = None
-        assert output_width ** 2 + 1 == state_dict["attnpool.positional_embedding"].shape[0]
+        assert output_width**2 + 1 == state_dict["attnpool.positional_embedding"].shape[0]
         image_resolution = output_width * 32
-        
-        model = build_model_resnet(image_resolution, vision_patch_size, 
-                                   vision_width, vision_layers, embed_dim)
-            
+
+        model = build_model_resnet(image_resolution, vision_patch_size, vision_width, vision_layers, embed_dim)
+
     del state_dict["embed_dim"]
 
     # convert_weights(model)
     model.load_state_dict(state_dict)
-    
+
     model = model.to(device)
     if str(device) == "cpu":
         model.float()

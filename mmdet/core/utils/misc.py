@@ -1,7 +1,7 @@
-from functools import partial
-
 import torch
 from six.moves import map, zip
+
+from functools import partial
 
 
 def multi_apply(func, *args, **kwargs):
@@ -30,10 +30,10 @@ def unmap(data, count, inds, fill=0):
     """Unmap a subset of item (data) back to the original set of items (of size
     count)"""
     if data.dim() == 1:
-        ret = data.new_full((count, ), fill)
+        ret = data.new_full((count,), fill)
         ret[inds.type(torch.bool)] = data
     else:
-        new_size = (count, ) + data.size()[1:]
+        new_size = (count,) + data.size()[1:]
         ret = data.new_full(new_size, fill)
         ret[inds.type(torch.bool), :] = data
     return ret

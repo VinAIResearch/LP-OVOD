@@ -30,13 +30,15 @@ class BucketingBBoxCoder(BaseBBoxCoder):
             border of the image. Defaults to True.
     """
 
-    def __init__(self,
-                 num_buckets,
-                 scale_factor,
-                 offset_topk=2,
-                 offset_upperbound=1.0,
-                 cls_ignore_neighbor=True,
-                 clip_border=True):
+    def __init__(
+        self,
+        num_buckets,
+        scale_factor,
+        offset_topk=2,
+        offset_upperbound=1.0,
+        cls_ignore_neighbor=True,
+        clip_border=True,
+    ):
         super(BucketingBBoxCoder, self).__init__()
         self.num_buckets = num_buckets
         self.scale_factor = scale_factor
@@ -61,10 +63,15 @@ class BucketingBBoxCoder(BaseBBoxCoder):
 
         assert bboxes.size(0) == gt_bboxes.size(0)
         assert bboxes.size(-1) == gt_bboxes.size(-1) == 4
-        encoded_bboxes = bbox2bucket(bboxes, gt_bboxes, self.num_buckets,
-                                     self.scale_factor, self.offset_topk,
-                                     self.offset_upperbound,
-                                     self.cls_ignore_neighbor)
+        encoded_bboxes = bbox2bucket(
+            bboxes,
+            gt_bboxes,
+            self.num_buckets,
+            self.scale_factor,
+            self.offset_topk,
+            self.offset_upperbound,
+            self.cls_ignore_neighbor,
+        )
         return encoded_bboxes
 
     def decode(self, bboxes, pred_bboxes, max_shape=None):
@@ -81,11 +88,10 @@ class BucketingBBoxCoder(BaseBBoxCoder):
         """
         assert len(pred_bboxes) == 2
         cls_preds, offset_preds = pred_bboxes
-        assert cls_preds.size(0) == bboxes.size(0) and offset_preds.size(
-            0) == bboxes.size(0)
-        decoded_bboxes = bucket2bbox(bboxes, cls_preds, offset_preds,
-                                     self.num_buckets, self.scale_factor,
-                                     max_shape, self.clip_border)
+        assert cls_preds.size(0) == bboxes.size(0) and offset_preds.size(0) == bboxes.size(0)
+        decoded_bboxes = bucket2bbox(
+            bboxes, cls_preds, offset_preds, self.num_buckets, self.scale_factor, max_shape, self.clip_border
+        )
 
         return decoded_bboxes
 
@@ -124,27 +130,19 @@ def generat_buckets(proposals, num_buckets, scale_factor=1.0):
     bucket_h = ph / num_buckets
 
     # left buckets
-    l_buckets = px1[:, None] + (0.5 + torch.arange(
-        0, side_num).to(proposals).float())[None, :] * bucket_w[:, None]
+    l_buckets = px1[:, None] + (0.5 + torch.arange(0, side_num).to(proposals).float())[None, :] * bucket_w[:, None]
     # right buckets
-    r_buckets = px2[:, None] - (0.5 + torch.arange(
-        0, side_num).to(proposals).float())[None, :] * bucket_w[:, None]
+    r_buckets = px2[:, None] - (0.5 + torch.arange(0, side_num).to(proposals).float())[None, :] * bucket_w[:, None]
     # top buckets
-    t_buckets = py1[:, None] + (0.5 + torch.arange(
-        0, side_num).to(proposals).float())[None, :] * bucket_h[:, None]
+    t_buckets = py1[:, None] + (0.5 + torch.arange(0, side_num).to(proposals).float())[None, :] * bucket_h[:, None]
     # down buckets
-    d_buckets = py2[:, None] - (0.5 + torch.arange(
-        0, side_num).to(proposals).float())[None, :] * bucket_h[:, None]
+    d_buckets = py2[:, None] - (0.5 + torch.arange(0, side_num).to(proposals).float())[None, :] * bucket_h[:, None]
     return bucket_w, bucket_h, l_buckets, r_buckets, t_buckets, d_buckets
 
 
-def bbox2bucket(proposals,
-                gt,
-                num_buckets,
-                scale_factor,
-                offset_topk=2,
-                offset_upperbound=1.0,
-                cls_ignore_neighbor=True):
+def bbox2bucket(
+    proposals, gt, num_buckets, scale_factor, offset_topk=2, offset_upperbound=1.0, cls_ignore_neighbor=True
+):
     """Generate buckets estimation and fine regression targets.
 
     Args:
@@ -177,8 +175,9 @@ def bbox2bucket(proposals,
     # generate buckets
     proposals = proposals.float()
     gt = gt.float()
-    (bucket_w, bucket_h, l_buckets, r_buckets, t_buckets,
-     d_buckets) = generat_buckets(proposals, num_buckets, scale_factor)
+    (bucket_w, bucket_h, l_buckets, r_buckets, t_buckets, d_buckets) = generat_buckets(
+        proposals, num_buckets, scale_factor
+    )
 
     gx1 = gt[..., 0]
     gy1 = gt[..., 1]
@@ -193,14 +192,10 @@ def bbox2bucket(proposals,
     d_offsets = (d_buckets - gy2[:, None]) / bucket_h[:, None]
 
     # select top-k nearset buckets
-    l_topk, l_label = l_offsets.abs().topk(
-        offset_topk, dim=1, largest=False, sorted=True)
-    r_topk, r_label = r_offsets.abs().topk(
-        offset_topk, dim=1, largest=False, sorted=True)
-    t_topk, t_label = t_offsets.abs().topk(
-        offset_topk, dim=1, largest=False, sorted=True)
-    d_topk, d_label = d_offsets.abs().topk(
-        offset_topk, dim=1, largest=False, sorted=True)
+    l_topk, l_label = l_offsets.abs().topk(offset_topk, dim=1, largest=False, sorted=True)
+    r_topk, r_label = r_offsets.abs().topk(offset_topk, dim=1, largest=False, sorted=True)
+    t_topk, t_label = t_offsets.abs().topk(offset_topk, dim=1, largest=False, sorted=True)
+    d_topk, d_label = d_offsets.abs().topk(offset_topk, dim=1, largest=False, sorted=True)
 
     offset_l_weights = l_offsets.new_zeros(l_offsets.size())
     offset_r_weights = r_offsets.new_zeros(r_offsets.size())
@@ -211,18 +206,10 @@ def bbox2bucket(proposals,
     # generate offset weights of top-k nearset buckets
     for k in range(offset_topk):
         if k >= 1:
-            offset_l_weights[inds, l_label[:,
-                                           k]] = (l_topk[:, k] <
-                                                  offset_upperbound).float()
-            offset_r_weights[inds, r_label[:,
-                                           k]] = (r_topk[:, k] <
-                                                  offset_upperbound).float()
-            offset_t_weights[inds, t_label[:,
-                                           k]] = (t_topk[:, k] <
-                                                  offset_upperbound).float()
-            offset_d_weights[inds, d_label[:,
-                                           k]] = (d_topk[:, k] <
-                                                  offset_upperbound).float()
+            offset_l_weights[inds, l_label[:, k]] = (l_topk[:, k] < offset_upperbound).float()
+            offset_r_weights[inds, r_label[:, k]] = (r_topk[:, k] < offset_upperbound).float()
+            offset_t_weights[inds, t_label[:, k]] = (t_topk[:, k] < offset_upperbound).float()
+            offset_d_weights[inds, d_label[:, k]] = (d_topk[:, k] < offset_upperbound).float()
         else:
             offset_l_weights[inds, l_label[:, k]] = 1.0
             offset_r_weights[inds, r_label[:, k]] = 1.0
@@ -230,44 +217,30 @@ def bbox2bucket(proposals,
             offset_d_weights[inds, d_label[:, k]] = 1.0
 
     offsets = torch.cat([l_offsets, r_offsets, t_offsets, d_offsets], dim=-1)
-    offsets_weights = torch.cat([
-        offset_l_weights, offset_r_weights, offset_t_weights, offset_d_weights
-    ],
-                                dim=-1)
+    offsets_weights = torch.cat([offset_l_weights, offset_r_weights, offset_t_weights, offset_d_weights], dim=-1)
 
     # generate bucket labels and weight
     side_num = int(np.ceil(num_buckets / 2.0))
-    labels = torch.stack(
-        [l_label[:, 0], r_label[:, 0], t_label[:, 0], d_label[:, 0]], dim=-1)
+    labels = torch.stack([l_label[:, 0], r_label[:, 0], t_label[:, 0], d_label[:, 0]], dim=-1)
 
     batch_size = labels.size(0)
-    bucket_labels = F.one_hot(labels.view(-1), side_num).view(batch_size,
-                                                              -1).float()
+    bucket_labels = F.one_hot(labels.view(-1), side_num).view(batch_size, -1).float()
     bucket_cls_l_weights = (l_offsets.abs() < 1).float()
     bucket_cls_r_weights = (r_offsets.abs() < 1).float()
     bucket_cls_t_weights = (t_offsets.abs() < 1).float()
     bucket_cls_d_weights = (d_offsets.abs() < 1).float()
-    bucket_cls_weights = torch.cat([
-        bucket_cls_l_weights, bucket_cls_r_weights, bucket_cls_t_weights,
-        bucket_cls_d_weights
-    ],
-                                   dim=-1)
+    bucket_cls_weights = torch.cat(
+        [bucket_cls_l_weights, bucket_cls_r_weights, bucket_cls_t_weights, bucket_cls_d_weights], dim=-1
+    )
     # ignore second nearest buckets for cls if necessay
     if cls_ignore_neighbor:
-        bucket_cls_weights = (~((bucket_cls_weights == 1) &
-                                (bucket_labels == 0))).float()
+        bucket_cls_weights = (~((bucket_cls_weights == 1) & (bucket_labels == 0))).float()
     else:
         bucket_cls_weights[:] = 1.0
     return offsets, offsets_weights, bucket_labels, bucket_cls_weights
 
 
-def bucket2bbox(proposals,
-                cls_preds,
-                offset_preds,
-                num_buckets,
-                scale_factor=1.0,
-                max_shape=None,
-                clip_border=True):
+def bucket2bbox(proposals, cls_preds, offset_preds, num_buckets, scale_factor=1.0, max_shape=None, clip_border=True):
     """Apply bucketing estimation (cls preds) and fine regression (offset
     preds) to generate det bboxes.
 
@@ -334,8 +307,7 @@ def bucket2bbox(proposals,
         y1 = y1.clamp(min=0, max=max_shape[0] - 1)
         x2 = x2.clamp(min=0, max=max_shape[1] - 1)
         y2 = y2.clamp(min=0, max=max_shape[0] - 1)
-    bboxes = torch.cat([x1[:, None], y1[:, None], x2[:, None], y2[:, None]],
-                       dim=-1)
+    bboxes = torch.cat([x1[:, None], y1[:, None], x2[:, None], y2[:, None]], dim=-1)
 
     # bucketing guided rescoring
     loc_confidence = score_topk[:, 0]

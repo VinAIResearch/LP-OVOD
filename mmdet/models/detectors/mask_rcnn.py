@@ -6,14 +6,7 @@ from .two_stage import TwoStageDetector
 class MaskRCNN(TwoStageDetector):
     """Implementation of `Mask R-CNN <https://arxiv.org/abs/1703.06870>`_"""
 
-    def __init__(self,
-                 backbone,
-                 rpn_head,
-                 roi_head,
-                 train_cfg,
-                 test_cfg,
-                 neck=None,
-                 pretrained=None):
+    def __init__(self, backbone, rpn_head, roi_head, train_cfg, test_cfg, neck=None, pretrained=None):
         super(MaskRCNN, self).__init__(
             backbone=backbone,
             neck=neck,
@@ -21,18 +14,21 @@ class MaskRCNN(TwoStageDetector):
             roi_head=roi_head,
             train_cfg=train_cfg,
             test_cfg=test_cfg,
-            pretrained=pretrained)
+            pretrained=pretrained,
+        )
 
-    def forward_train(self,
-                      img,
-                      img_no_normalize,
-                      img_metas,
-                      gt_bboxes,
-                      gt_labels,
-                      gt_bboxes_ignore=None,
-                      gt_masks=None,
-                      proposals=None,
-                      **kwargs):
+    def forward_train(
+        self,
+        img,
+        img_no_normalize,
+        img_metas,
+        gt_bboxes,
+        gt_labels,
+        gt_bboxes_ignore=None,
+        gt_masks=None,
+        proposals=None,
+        **kwargs
+    ):
         """
         Args:
             img (Tensor): of shape (N, C, H, W) encoding input images.
@@ -67,24 +63,27 @@ class MaskRCNN(TwoStageDetector):
 
         # RPN forward and loss
         if self.with_rpn:
-            proposal_cfg = self.train_cfg.get('rpn_proposal',
-                                              self.test_cfg.rpn)
+            proposal_cfg = self.train_cfg.get("rpn_proposal", self.test_cfg.rpn)
             rpn_losses, proposal_list = self.rpn_head.forward_train(
-                x,
-                img_metas,
-                gt_bboxes,
-                gt_labels=None,
-                gt_bboxes_ignore=gt_bboxes_ignore,
-                proposal_cfg=proposal_cfg)
+                x, img_metas, gt_bboxes, gt_labels=None, gt_bboxes_ignore=gt_bboxes_ignore, proposal_cfg=proposal_cfg
+            )
             losses.update(rpn_losses)
         else:
             proposal_list = proposals
 
-        roi_losses = self.roi_head.forward_train(x, img, img_no_normalize, img_metas, proposal_list,proposals,
-                                                 gt_bboxes, gt_labels,
-                                                 gt_bboxes_ignore, gt_masks,
-                                                 **kwargs)
+        roi_losses = self.roi_head.forward_train(
+            x,
+            img,
+            img_no_normalize,
+            img_metas,
+            proposal_list,
+            proposals,
+            gt_bboxes,
+            gt_labels,
+            gt_bboxes_ignore,
+            gt_masks,
+            **kwargs
+        )
         losses.update(roi_losses)
 
         return losses
-

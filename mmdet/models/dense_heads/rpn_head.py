@@ -22,10 +22,8 @@ class RPNHead(RPNTestMixin, AnchorHead):
 
     def _init_layers(self):
         """Initialize layers of the head."""
-        self.rpn_conv = nn.Conv2d(
-            self.in_channels, self.feat_channels, 3, padding=1)
-        self.rpn_cls = nn.Conv2d(self.feat_channels,
-                                 self.num_anchors * self.cls_out_channels, 1)
+        self.rpn_conv = nn.Conv2d(self.in_channels, self.feat_channels, 3, padding=1)
+        self.rpn_cls = nn.Conv2d(self.feat_channels, self.num_anchors * self.cls_out_channels, 1)
         self.rpn_reg = nn.Conv2d(self.feat_channels, self.num_anchors * 4, 1)
 
     def init_weights(self):
@@ -42,12 +40,7 @@ class RPNHead(RPNTestMixin, AnchorHead):
         rpn_bbox_pred = self.rpn_reg(x)
         return rpn_cls_score, rpn_bbox_pred
 
-    def loss(self,
-             cls_scores,
-             bbox_preds,
-             gt_bboxes,
-             img_metas,
-             gt_bboxes_ignore=None):
+    def loss(self, cls_scores, bbox_preds, gt_bboxes, img_metas, gt_bboxes_ignore=None):
         """Compute losses of the head.
 
         Args:
@@ -66,23 +59,11 @@ class RPNHead(RPNTestMixin, AnchorHead):
             dict[str, Tensor]: A dictionary of loss components.
         """
         losses = super(RPNHead, self).loss(
-            cls_scores,
-            bbox_preds,
-            gt_bboxes,
-            None,
-            img_metas,
-            gt_bboxes_ignore=gt_bboxes_ignore)
-        return dict(
-            loss_rpn_cls=losses['loss_cls'], loss_rpn_bbox=losses['loss_bbox'])
+            cls_scores, bbox_preds, gt_bboxes, None, img_metas, gt_bboxes_ignore=gt_bboxes_ignore
+        )
+        return dict(loss_rpn_cls=losses["loss_cls"], loss_rpn_bbox=losses["loss_bbox"])
 
-    def _get_bboxes_single(self,
-                           cls_scores,
-                           bbox_preds,
-                           mlvl_anchors,
-                           img_shape,
-                           scale_factor,
-                           cfg,
-                           rescale=False):
+    def _get_bboxes_single(self, cls_scores, bbox_preds, mlvl_anchors, img_shape, scale_factor, cfg, rescale=False):
         """Transform outputs for a single batch item into bbox predictions.
 
         Args:
@@ -133,30 +114,25 @@ class RPNHead(RPNTestMixin, AnchorHead):
                 # sort is faster than topk
                 # _, topk_inds = scores.topk(cfg.nms_pre)
                 ranked_scores, rank_inds = scores.sort(descending=True)
-                topk_inds = rank_inds[:cfg.nms_pre]
-                scores = ranked_scores[:cfg.nms_pre]
+                topk_inds = rank_inds[: cfg.nms_pre]
+                scores = ranked_scores[: cfg.nms_pre]
                 rpn_bbox_pred = rpn_bbox_pred[topk_inds, :]
                 anchors = anchors[topk_inds, :]
             mlvl_scores.append(scores)
             mlvl_bbox_preds.append(rpn_bbox_pred)
             mlvl_valid_anchors.append(anchors)
-            level_ids.append(
-                scores.new_full((scores.size(0), ), idx, dtype=torch.long))
+            level_ids.append(scores.new_full((scores.size(0),), idx, dtype=torch.long))
 
         scores = torch.cat(mlvl_scores)
         anchors = torch.cat(mlvl_valid_anchors)
         rpn_bbox_pred = torch.cat(mlvl_bbox_preds)
-        proposals = self.bbox_coder.decode(
-            anchors, rpn_bbox_pred, max_shape=img_shape)
+        proposals = self.bbox_coder.decode(anchors, rpn_bbox_pred, max_shape=img_shape)
         ids = torch.cat(level_ids)
 
         if cfg.min_bbox_size > 0:
             w = proposals[:, 2] - proposals[:, 0]
             h = proposals[:, 3] - proposals[:, 1]
-            valid_inds = torch.nonzero(
-                (w >= cfg.min_bbox_size)
-                & (h >= cfg.min_bbox_size),
-                as_tuple=False).squeeze()
+            valid_inds = torch.nonzero((w >= cfg.min_bbox_size) & (h >= cfg.min_bbox_size), as_tuple=False).squeeze()
             if valid_inds.sum().item() != len(proposals):
                 proposals = proposals[valid_inds, :]
                 scores = scores[valid_inds]
@@ -168,6 +144,6 @@ class RPNHead(RPNTestMixin, AnchorHead):
         #     proposals, scores, ids = proposals[inds], scores[inds], ids[inds]
 
         # TODO: remove the hard coded nms type
-        nms_cfg = dict(type='nms', iou_threshold=cfg.nms_thr)
+        nms_cfg = dict(type="nms", iou_threshold=cfg.nms_thr)
         dets, keep = batched_nms(proposals, scores, ids, nms_cfg)
-        return dets[:cfg.nms_post]
+        return dets[: cfg.nms_post]

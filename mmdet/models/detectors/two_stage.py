@@ -4,8 +4,6 @@ import torch.nn as nn
 # from mmdet.core import bbox2result, bbox2roi, build_assigner, build_sampler
 from ..builder import DETECTORS, build_backbone, build_head, build_neck
 from .base import BaseDetector
-import cv2 as cv
-import numpy as np
 
 
 @DETECTORS.register_module()
@@ -16,14 +14,9 @@ class TwoStageDetector(BaseDetector):
     task-specific regression head.
     """
 
-    def __init__(self,
-                 backbone,
-                 neck=None,
-                 rpn_head=None,
-                 roi_head=None,
-                 train_cfg=None,
-                 test_cfg=None,
-                 pretrained=None):
+    def __init__(
+        self, backbone, neck=None, rpn_head=None, roi_head=None, train_cfg=None, test_cfg=None, pretrained=None
+    ):
         super(TwoStageDetector, self).__init__()
         self.backbone = build_backbone(backbone)
 
@@ -52,12 +45,12 @@ class TwoStageDetector(BaseDetector):
     @property
     def with_rpn(self):
         """bool: whether the detector has RPN"""
-        return hasattr(self, 'rpn_head') and self.rpn_head is not None
+        return hasattr(self, "rpn_head") and self.rpn_head is not None
 
     @property
     def with_roi_head(self):
         """bool: whether the detector has a RoI head"""
-        return hasattr(self, 'roi_head') and self.roi_head is not None
+        return hasattr(self, "roi_head") and self.roi_head is not None
 
     def init_weights(self, pretrained=None):
         """Initialize the weights in detector.
@@ -97,22 +90,16 @@ class TwoStageDetector(BaseDetector):
         # rpn
         if self.with_rpn:
             rpn_outs = self.rpn_head(x)
-            outs = outs + (rpn_outs, )
+            outs = outs + (rpn_outs,)
         proposals = torch.randn(1000, 4).to(img.device)
         # roi_head
         roi_outs = self.roi_head.forward_dummy(x, proposals)
-        outs = outs + (roi_outs, )
+        outs = outs + (roi_outs,)
         return outs
 
-    def forward_train(self,
-                      img,
-                      img_metas,
-                      gt_bboxes,
-                      gt_labels,
-                      gt_bboxes_ignore=None,
-                      gt_masks=None,
-                      proposals=None,
-                      **kwargs):
+    def forward_train(
+        self, img, img_metas, gt_bboxes, gt_labels, gt_bboxes_ignore=None, gt_masks=None, proposals=None, **kwargs
+    ):
         """
         Args:
             img (Tensor): of shape (N, C, H, W) encoding input images.
@@ -147,44 +134,32 @@ class TwoStageDetector(BaseDetector):
 
         # RPN forward and loss
         if self.with_rpn:
-            proposal_cfg = self.train_cfg.get('rpn_proposal',
-                                              self.test_cfg.rpn)
+            proposal_cfg = self.train_cfg.get("rpn_proposal", self.test_cfg.rpn)
             rpn_losses, proposal_list = self.rpn_head.forward_train(
-                x,
-                img_metas,
-                gt_bboxes,
-                gt_labels=None,
-                gt_bboxes_ignore=gt_bboxes_ignore,
-                proposal_cfg=proposal_cfg)
+                x, img_metas, gt_bboxes, gt_labels=None, gt_bboxes_ignore=gt_bboxes_ignore, proposal_cfg=proposal_cfg
+            )
             losses.update(rpn_losses)
         else:
             proposal_list = proposals
 
-        roi_losses = self.roi_head.forward_train(x, img_metas, proposal_list,
-                                                 gt_bboxes, gt_labels,
-                                                 gt_bboxes_ignore, gt_masks,
-                                                 **kwargs)
+        roi_losses = self.roi_head.forward_train(
+            x, img_metas, proposal_list, gt_bboxes, gt_labels, gt_bboxes_ignore, gt_masks, **kwargs
+        )
         losses.update(roi_losses)
 
         return losses
 
-    async def async_simple_test(self,
-                                img,
-                                img_meta,
-                                proposals=None,
-                                rescale=False):
+    async def async_simple_test(self, img, img_meta, proposals=None, rescale=False):
         """Async test without augmentation."""
-        assert self.with_bbox, 'Bbox head must be implemented.'
+        assert self.with_bbox, "Bbox head must be implemented."
         x = self.extract_feat(img)
 
         if proposals is None:
-            proposal_list = await self.rpn_head.async_simple_test_rpn(
-                x, img_meta)
+            proposal_list = await self.rpn_head.async_simple_test_rpn(x, img_meta)
         else:
             proposal_list = proposals
 
-        return await self.roi_head.async_simple_test(
-            x, proposal_list, img_meta, rescale=rescale)
+        return await self.roi_head.async_simple_test(x, proposal_list, img_meta, rescale=rescale)
 
     def aug_test(self, imgs, img_metas, rescale=False):
         """Test with augmentations.
@@ -194,23 +169,21 @@ class TwoStageDetector(BaseDetector):
         """
         x = self.extract_feats(imgs)
         proposal_list = self.rpn_head.aug_test_rpn(x, img_metas)
-        return self.roi_head.aug_test(
-            x, proposal_list, img_metas, rescale=rescale)
+        return self.roi_head.aug_test(x, proposal_list, img_metas, rescale=rescale)
 
     def simple_test(self, img, img_metas, rescale=False, **kwargs):
         """Test without augmentation."""
 
-        assert self.with_bbox, 'Bbox head must be implemented.'
+        assert self.with_bbox, "Bbox head must be implemented."
         x = self.extract_feat(img)
-        proposals = kwargs.get('proposals', None)
-        objectness = kwargs.get('objectness', None)
+        proposals = kwargs.get("proposals", None)
+        objectness = kwargs.get("objectness", None)
         if objectness is not None:
             objectness = objectness[0].squeeze()
         if proposals is None:
             proposal_list = self.rpn_head.simple_test_rpn(x, img_metas)
         else:
             proposal_list = proposals
-            
+
         # proposal_list = self.roi_head.get_refined_bboxes(x, proposal_list, img_metas)
-        return self.roi_head.simple_test(
-            x, img, proposal_list, img_metas, rescale=rescale, objectness=objectness)
+        return self.roi_head.simple_test(x, img, proposal_list, img_metas, rescale=rescale, objectness=objectness)

@@ -1,9 +1,8 @@
-import math
-
 import torch
 import torch.nn as nn
 from mmcv.cnn import uniform_init
 
+import math
 from .builder import POSITIONAL_ENCODING
 
 
@@ -29,17 +28,12 @@ class SinePositionalEncoding(nn.Module):
             numerical stability. Default 1e-6.
     """
 
-    def __init__(self,
-                 num_feats,
-                 temperature=10000,
-                 normalize=False,
-                 scale=2 * math.pi,
-                 eps=1e-6):
+    def __init__(self, num_feats, temperature=10000, normalize=False, scale=2 * math.pi, eps=1e-6):
         super(SinePositionalEncoding, self).__init__()
         if normalize:
-            assert isinstance(scale, (float, int)), 'when normalize is set,' \
-                'scale should be provided and in float or int type, ' \
-                f'found {type(scale)}'
+            assert isinstance(scale, (float, int)), (
+                "when normalize is set," "scale should be provided and in float or int type, " f"found {type(scale)}"
+            )
         self.num_feats = num_feats
         self.temperature = temperature
         self.normalize = normalize
@@ -64,28 +58,23 @@ class SinePositionalEncoding(nn.Module):
         if self.normalize:
             y_embed = y_embed / (y_embed[:, -1:, :] + self.eps) * self.scale
             x_embed = x_embed / (x_embed[:, :, -1:] + self.eps) * self.scale
-        dim_t = torch.arange(
-            self.num_feats, dtype=torch.float32, device=mask.device)
-        dim_t = self.temperature**(2 * (dim_t // 2) / self.num_feats)
+        dim_t = torch.arange(self.num_feats, dtype=torch.float32, device=mask.device)
+        dim_t = self.temperature ** (2 * (dim_t // 2) / self.num_feats)
         pos_x = x_embed[:, :, :, None] / dim_t
         pos_y = y_embed[:, :, :, None] / dim_t
-        pos_x = torch.stack(
-            (pos_x[:, :, :, 0::2].sin(), pos_x[:, :, :, 1::2].cos()),
-            dim=4).flatten(3)
-        pos_y = torch.stack(
-            (pos_y[:, :, :, 0::2].sin(), pos_y[:, :, :, 1::2].cos()),
-            dim=4).flatten(3)
+        pos_x = torch.stack((pos_x[:, :, :, 0::2].sin(), pos_x[:, :, :, 1::2].cos()), dim=4).flatten(3)
+        pos_y = torch.stack((pos_y[:, :, :, 0::2].sin(), pos_y[:, :, :, 1::2].cos()), dim=4).flatten(3)
         pos = torch.cat((pos_y, pos_x), dim=3).permute(0, 3, 1, 2)
         return pos
 
     def __repr__(self):
         """str: a string that describes the module"""
         repr_str = self.__class__.__name__
-        repr_str += f'(num_feats={self.num_feats}, '
-        repr_str += f'temperature={self.temperature}, '
-        repr_str += f'normalize={self.normalize}, '
-        repr_str += f'scale={self.scale}, '
-        repr_str += f'eps={self.eps})'
+        repr_str += f"(num_feats={self.num_feats}, "
+        repr_str += f"temperature={self.temperature}, "
+        repr_str += f"normalize={self.normalize}, "
+        repr_str += f"scale={self.scale}, "
+        repr_str += f"eps={self.eps})"
         return repr_str
 
 
@@ -134,17 +123,18 @@ class LearnedPositionalEncoding(nn.Module):
         y = torch.arange(h, device=mask.device)
         x_embed = self.col_embed(x)
         y_embed = self.row_embed(y)
-        pos = torch.cat(
-            (x_embed.unsqueeze(0).repeat(h, 1, 1), y_embed.unsqueeze(1).repeat(
-                1, w, 1)),
-            dim=-1).permute(2, 0,
-                            1).unsqueeze(0).repeat(mask.shape[0], 1, 1, 1)
+        pos = (
+            torch.cat((x_embed.unsqueeze(0).repeat(h, 1, 1), y_embed.unsqueeze(1).repeat(1, w, 1)), dim=-1)
+            .permute(2, 0, 1)
+            .unsqueeze(0)
+            .repeat(mask.shape[0], 1, 1, 1)
+        )
         return pos
 
     def __repr__(self):
         """str: a string that describes the module"""
         repr_str = self.__class__.__name__
-        repr_str += f'(num_feats={self.num_feats}, '
-        repr_str += f'row_num_embed={self.row_num_embed}, '
-        repr_str += f'col_num_embed={self.col_num_embed})'
+        repr_str += f"(num_feats={self.num_feats}, "
+        repr_str += f"row_num_embed={self.row_num_embed}, "
+        repr_str += f"col_num_embed={self.col_num_embed})"
         return repr_str

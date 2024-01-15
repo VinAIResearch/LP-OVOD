@@ -1,13 +1,14 @@
 from mmcv.utils import Registry, build_from_cfg
 from torch import nn
 
-BACKBONES = Registry('backbone')
-NECKS = Registry('neck')
-ROI_EXTRACTORS = Registry('roi_extractor')
-SHARED_HEADS = Registry('shared_head')
-HEADS = Registry('head')
-LOSSES = Registry('loss')
-DETECTORS = Registry('detector')
+
+BACKBONES = Registry("backbone")
+NECKS = Registry("neck")
+ROI_EXTRACTORS = Registry("roi_extractor")
+SHARED_HEADS = Registry("shared_head")
+HEADS = Registry("head")
+LOSSES = Registry("loss")
+DETECTORS = Registry("detector")
 
 
 def build(cfg, registry, default_args=None):
@@ -24,9 +25,7 @@ def build(cfg, registry, default_args=None):
         nn.Module: A built nn module.
     """
     if isinstance(cfg, list):
-        modules = [
-            build_from_cfg(cfg_, registry, default_args) for cfg_ in cfg
-        ]
+        modules = [build_from_cfg(cfg_, registry, default_args) for cfg_ in cfg]
         return nn.Sequential(*modules)
     else:
         return build_from_cfg(cfg, registry, default_args)
