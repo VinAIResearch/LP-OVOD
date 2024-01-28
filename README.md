@@ -13,8 +13,7 @@ Chau Pham, Truong Vu, Khoi Nguyen<br>
 **VinAI Research, Vietnam**
 
 > **Abstract:** 
-Preparing training data for deep vision models is a labor-intensive task. To ad-
-dress this, generative models have emerged as an effective solution for generating
+Preparing training data for deep vision models is a labor-intensive task. To address this, generative models have emerged as an effective solution for generating
 synthetic data. While current generative models produce image-level category
 labels, we propose a novel method for generating pixel-level semantic segmen-
 tation labels using the text-to-image generative model Stable Diffusion (SD). By
