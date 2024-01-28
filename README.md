@@ -13,7 +13,23 @@ Chau Pham, Truong Vu, Khoi Nguyen<br>
 **VinAI Research, Vietnam**
 
 > **Abstract:** 
+<<<<<<< HEAD
 This paper addresses the challenging problem of open-vocabulary object detection (OVOD) where an object detector must identify both seen and unseen classes in test images without labeled examples of the unseen classes in training. A typical approach for OVOD is to use joint text-image embeddings of CLIP to assign box proposals to their closest text label. However, this method has a critical issue: many low-quality boxes, such as over- and under-covered-object boxes, have the same similarity score as high-quality boxes since CLIP is not trained on exact object location information. To address this issue, we propose a novel method, \Approach, that discards low-quality boxes by training a sigmoid linear classifier on pseudo labels retrieved from the top relevant region proposals to the novel text.  Experimental results on COCO affirm the superior performance of our approach over the state of the art, achieving 40.5 in $AP_{novel}$ using ResNet50 as the backbone and without external datasets or knowing novel classes during training.
+=======
+Preparing training data for deep vision models is a labor-intensive task. To address this, generative models have emerged as an effective solution for generating
+synthetic data. While current generative models produce image-level category
+labels, we propose a novel method for generating pixel-level semantic segmen-
+tation labels using the text-to-image generative model Stable Diffusion (SD). By
+utilizing the text prompts, cross-attention, and self-attention of SD, we introduce
+three new techniques: class-prompt appending, class-prompt cross-attention, and
+self-attention exponentiation. These techniques enable us to generate segmentation
+maps corresponding to synthetic images. These maps serve as pseudo-labels for
+training semantic segmenters, eliminating the need for labor-intensive pixel-wise
+annotation. To account for the imperfections in our pseudo-labels, we incorporate
+uncertainty regions into the segmentation, allowing us to disregard loss from those
+regions. We conduct evaluations on two datasets, PASCAL VOC and MSCOCO,
+and our approach significantly outperforms concurrent work.
+>>>>>>> b81d55eaf9bcd8cf3730a58f16af239fe3f28939
 
 ![teaser.png](./assets/approach_official.png)
 Details of the model architecture and experimental results can be found in [our following paper](https://arxiv.org/abs/2310.17109).<br>
