@@ -39,8 +39,6 @@ pip install torch==1.7.1+cu110 torchvision==0.8.2+cu110 torchaudio==0.7.2 -f htt
 pip install -r requirements/build.txt
 pip install -e .
 pip install git+https://github.com/openai/CLIP.git
-<!-- pip uninstall pycocotools -y
-pip install mmpycocotools -->
 pip install git+https://github.com/lvis-dataset/lvis-api.git
 pip install mmcv-full==1.2.5 -f https://download.openmmlab.com/mmcv/dist/cu110/torch1.7.0/index.html
 pip install yapf==0.40.2
@@ -49,23 +47,36 @@ conda install -c pytorch faiss-gpu
 
 ## **Preparation**
 ### Data
-Download the following dataset [COCO](https://cocodataset.org/#home). 
+Download the following dataset [COCO](https://cocodataset.org/#home), and open-vocabulary COCO split from [this link](https://drive.google.com/drive/folders/1Ew24Rua-LAuNeK6OsaglrYwkpLSG8Xmt?usp=sharing).
 
 All models use the backbone pretrained with [SoCo](https://github.com/hologerry/SoCo). Download the [pretrained backbone](https://drive.google.com/file/d/1z6Tb2MPFJDv9qpEyn_J0cJcXOguKTiL0/view) and save to the folder `weights`. Also save the pretrained CLIP model to `weights`. 
+
+### Download COCO proposals
+Download COCO proposals from [this link](https://github.com/VinAIResearch/LP-OVOD/releases/download/v1.0/proposals.zip) and put under the folder `proposals`
 
 ### Code structure
 ```
 ├── configs
 ├── mmdet
 ├── weights
+│   ├── current_mmdetection_Head.pth
+│   ├── ViT-B-32.pt
+├── ovd_coco_text_embedding.pth
 ├── tools
 ├── prepare
+├── proposals
+│   ├── train_coco_id_map.json
+│   ├── train_coco_proposals.pkl
+│   ├── val_coco_id_map.json
+│   ├── val_coco_proposals.pkl
 ├── retrieval
 ├── scripts
 ├── ovd_coco_text_embedding.pth
 ├── data
 │   ├── coco
 │   │   ├── annotations
+│   │   |   ├── ovd_ins_{train,val}2017_{all,b,t}.json
+│   │   |   ├── instances_{train,val}2017.json
 │   │   ├── train2017
 │   │   ├── val2017
 
@@ -76,9 +87,6 @@ All models use the backbone pretrained with [SoCo](https://github.com/hologerry/
 python ./prepare/clip_utils.py
 ```
 A file `ovd_coco_text_embedding.pth` will be created (we have already extracted this for you).
-
-### Download OLN proposals
-Download OLN proposals from [this link](https://github.com/VinAIResearch/LP-OVOD/releases/download/v1.0/coco_proposals.pkl).
 
 ### Extract the CLIP visual embeddings on pre-computed proposals
 This embeddings will be used for computing the Knowledge Distillation loss and retrieving novel proposals
@@ -98,17 +106,18 @@ A file `coco_clip_emb_train.pth` (which is over 100GB) will be created, so pleas
 ## Training and Testing
 ### Pretraining for Base Classes
 ```
-sh ./scripts/vild_sigmoid.sh
+bash ./scripts/vild_sigmoid.sh
 ```
+We provide the pretraining checkpoint at [this link](https://github.com/VinAIResearch/LP-OVOD/releases/download/v1.0/vild_sigmoid.pth)
 
 ### Few-shot Fine-tuning for Novel Classes
 ```
-sh ./scripts/vild_sigmoid_ft.sh
+bash ./scripts/vild_sigmoid_ft.sh /path/to/pretraining_ckpt
 ```
 
 ### Test the model on Both Base and Novel Classes
 ```
-sh ./scripts/vild_sigmoid_test.sh
+bash ./scripts/vild_sigmoid_test.sh /path/to/ft_ckpt
 ```
 You should change the checkpoint in each script accordingly to the path in your machine.
 ### Evaluation with pre-trained models
