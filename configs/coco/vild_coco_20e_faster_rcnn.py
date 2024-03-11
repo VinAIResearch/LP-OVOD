@@ -26,7 +26,6 @@ model = dict(
             loss_bbox=dict(type="L1Loss", loss_weight=1.0),
         )
     ),
-    test_cfg=dict(rcnn=dict(score_thr=0.05, nms=dict(type="nms", iou_threshold=0.5), max_per_img=100)),
 )
 
 optimizer = dict(type="SGD", lr=0.02, momentum=0.9, weight_decay=0.000025)

@@ -7,21 +7,18 @@ import torch.nn.functional as F
 import clip
 import os.path as osp
 import time
-from fvcore.nn import sigmoid_focal_loss_jit
 from mmdet.core import bbox2result, bbox2roi, build_assigner, build_sampler
 from tqdm import tqdm
 from ..builder import HEADS, build_head, build_roi_extractor
+from ..losses.focal_loss import py_sigmoid_focal_loss
 from .base_roi_head import BaseRoIHead
 from .class_name import (
-    COCO_CLASSES,
     COCO_OVD_ALL_CLS,
-    COCO_SEEN_CLS,
-    COCO_UNSEEN_CLS,
     LVIS_CLASSES,
     VOC_CLASSES,
     Object365_CLASSES,
-    coco_unseen_ids_test,
-    coco_unseen_ids_train,
+    coco_base_label_ids,
+    coco_novel_label_ids,
     lvis_base_label_ids,
     lvis_novel_label_ids,
     template_list,
@@ -45,7 +42,7 @@ class StandardRoIHeadSigmoid(BaseRoIHead, BBoxTestMixin, MaskTestMixin):
         test_cfg=None,
         kd_weight=256,
         prompt_path=None,
-        feature_path="data/lvis_clip_image_embedding",
+        feature_path=None,
         proposal_id_map=None,
         clip_root="",
         temperature=0.02,
@@ -70,8 +67,6 @@ class StandardRoIHeadSigmoid(BaseRoIHead, BBoxTestMixin, MaskTestMixin):
             self.CLASSES = COCO_OVD_ALL_CLS
         elif bbox_head.num_classes == 65:
             self.CLASSES = COCO_OVD_ALL_CLS
-        elif bbox_head.num_classes == 80:
-            self.CLASSES = COCO_CLASSES
         elif bbox_head.num_classes == 20:
             self.CLASSES = VOC_CLASSES
         elif bbox_head.num_classes == 1203:
@@ -89,30 +84,18 @@ class StandardRoIHeadSigmoid(BaseRoIHead, BBoxTestMixin, MaskTestMixin):
             self.base_label_ids = torch.tensor(lvis_base_label_ids, device=device)
             self.novel_label_ids = torch.tensor(lvis_novel_label_ids, device=device)
             self.novel_index = F.pad(
-                torch.bincount(self.novel_label_ids),
-                (0, self.num_classes - 1 - self.novel_label_ids.max()),
+                torch.bincount(self.novel_label_ids), (0, self.num_classes - self.novel_label_ids.max())
             ).bool()
         elif self.num_classes == 20:
             self.novel_label_ids = torch.tensor(voc_novel_label_ids, device=device)
             self.novel_index = F.pad(
-                torch.bincount(self.novel_label_ids),
-                (0, self.num_classes - 1 - self.novel_label_ids.max()),
-            ).bool()
-        elif self.num_classes == 80:
-            self.novel_label_ids = torch.tensor(coco_unseen_ids_train, device=device)
-            self.unseen_label_ids_test = torch.tensor(coco_unseen_ids_test, device=device)
-            self.novel_index = F.pad(
-                torch.bincount(self.novel_label_ids),
-                (0, self.num_classes - 1 - self.novel_label_ids.max()),
+                torch.bincount(self.novel_label_ids), (0, self.num_classes - self.novel_label_ids.max())
             ).bool()
         elif self.num_classes == 65:
-            base_label_ids = [COCO_OVD_ALL_CLS.index(i) for i in COCO_SEEN_CLS]
-            self.base_label_ids = torch.tensor(base_label_ids, device=device)
-            novel_label_ids = [COCO_OVD_ALL_CLS.index(i) for i in COCO_UNSEEN_CLS]
-            self.novel_label_ids = torch.tensor(novel_label_ids, device=device)
+            self.base_label_ids = torch.tensor(coco_base_label_ids, device=device)
+            self.novel_label_ids = torch.tensor(coco_novel_label_ids, device=device)
             self.novel_index = F.pad(
-                torch.bincount(self.novel_label_ids),
-                (0, self.num_classes - 1 - self.novel_label_ids.max()),
+                torch.bincount(self.novel_label_ids), (0, self.num_classes - 1 - self.novel_label_ids.max())
             ).bool()
 
         # config
@@ -284,12 +267,7 @@ class StandardRoIHeadSigmoid(BaseRoIHead, BBoxTestMixin, MaskTestMixin):
         # bbox head forward and loss
         if self.with_bbox:
             bbox_results = self._bbox_forward_train(
-                x,
-                sampling_results,
-                proposals_pre_computed,
-                gt_bboxes,
-                gt_labels,
-                img_metas,
+                x, sampling_results, proposals_pre_computed, gt_bboxes, gt_labels, img_metas
             )
             losses.update(bbox_results["loss_bbox"])
 
@@ -330,15 +308,7 @@ class StandardRoIHeadSigmoid(BaseRoIHead, BBoxTestMixin, MaskTestMixin):
 
         return None, region_embeddings
 
-    def _bbox_forward_train(
-        self,
-        x,
-        sampling_results,
-        proposals_pre_computed,
-        gt_bboxes,
-        gt_labels,
-        img_metas,
-    ):
+    def _bbox_forward_train(self, x, sampling_results, proposals_pre_computed, gt_bboxes, gt_labels, img_metas):
         """Run forward function and calculate loss for box head in training."""
 
         # -------------Classification loss---------------
@@ -349,16 +319,14 @@ class StandardRoIHeadSigmoid(BaseRoIHead, BBoxTestMixin, MaskTestMixin):
         cls_score_text = region_embeddings @ self.prototype.T
         bbox_targets = self.bbox_head.get_targets(sampling_results, gt_bboxes, gt_labels, self.train_cfg)
         labels, _, _, _ = bbox_targets
-        bin_labels = labels.new_full((labels.size(0), self.num_classes), 0)
-        inds = torch.nonzero((labels >= 0) & (labels < self.num_classes), as_tuple=False).squeeze()
+        bin_labels = labels.new_full((labels.size(0), len(self.base_label_ids)), 0)
+        inds = torch.nonzero((labels >= 0) & (labels < len(self.base_label_ids)), as_tuple=False).squeeze()
         if inds.numel() > 0:
             bin_labels[inds, labels[inds]] = 1
 
-        bin_labels = bin_labels[:, self.base_label_ids]
-
         num_pos_bboxes = sum([res.pos_bboxes.size(0) for res in sampling_results])
         cls_loss = (
-            sigmoid_focal_loss_jit(cls_score_text, bin_labels, reduction="sum", gamma=2, alpha=0.25) / num_pos_bboxes
+            py_sigmoid_focal_loss(cls_score_text, bin_labels, reduction="sum", gamma=2, alpha=0.25) / num_pos_bboxes
         )
         loss_bbox = self.bbox_head.loss(bbox_results["bbox_pred"], rois, *bbox_targets)
 
@@ -369,8 +337,7 @@ class StandardRoIHeadSigmoid(BaseRoIHead, BBoxTestMixin, MaskTestMixin):
             num_proposals_per_img = tuple(len(proposal) for proposal in proposals_pre_computed)
             rois_image = torch.cat(proposals_pre_computed, dim=0)
             batch_index = torch.cat(
-                [x[0].new_full((num_proposals_per_img[i], 1), i) for i in range(len(num_proposals_per_img))],
-                0,
+                [x[0].new_full((num_proposals_per_img[i], 1), i) for i in range(len(num_proposals_per_img))], 0
             )
             bboxes = torch.cat([batch_index, rois_image[..., :4]], dim=-1)
 
@@ -384,14 +351,14 @@ class StandardRoIHeadSigmoid(BaseRoIHead, BBoxTestMixin, MaskTestMixin):
             clip_image_features_ensemble = []
             for i in range(len(img_metas)):
                 try:
-                    img_id = int(img_metas[i]["ori_filename"].split(".")[0].split("/")[1])
+                    img_id = int(img_metas[i]["ori_filename"].split(".")[0])
                     proposal_id = self.proposal_id_map[str(img_id)]
                     tmp = self.clip_features[
                         self.num_proposals_per_img_cum[proposal_id] : self.num_proposals_per_img_cum[proposal_id + 1]
                     ].to(self.device)
                     clip_image_features_ensemble.append(tmp.to(self.device))
-                except ValueError:
-                    raise ValueError("Proposal does not exist")
+                except Exception as e:
+                    raise ValueError(f"Proposal does not exist {e}")
             clip_image_features_ensemble = torch.cat(clip_image_features_ensemble, dim=0)
             kd_loss = F.l1_loss(region_embeddings_image, clip_image_features_ensemble) * self.kd_weight
             loss_bbox.update(kd_loss=kd_loss)
@@ -469,7 +436,7 @@ class StandardRoIHeadSigmoid(BaseRoIHead, BBoxTestMixin, MaskTestMixin):
 
         cls_score_text = cls_score_text.sigmoid()
         cls_score_text_full = cls_score_text.new_full((cls_score_text.size(0), self.num_classes), 1)
-        cls_score_text_full[:, self.base_label_ids] = cls_score_text
+        cls_score_text_full[:, coco_base_label_ids] = cls_score_text
 
         # Score for the second head
         if self.ensemble:
@@ -489,7 +456,7 @@ class StandardRoIHeadSigmoid(BaseRoIHead, BBoxTestMixin, MaskTestMixin):
             )
         else:
             cls_score = cls_score_text_full
-        # breakpoint()
+
         if objectness is not None:
             cls_score = (cls_score * objectness.unsqueeze(1)) ** 0.5
 
@@ -529,24 +496,14 @@ class StandardRoIHeadSigmoid(BaseRoIHead, BBoxTestMixin, MaskTestMixin):
 
         return det_bboxes, det_labels
 
-    def simple_test(self, x, proposal_list, img_metas, proposals=None, rescale=False, **kwargs):
+    def simple_test(self, x, proposal_list, img_metas, rescale=False, **kwargs):
         """Test without augmentation."""
         assert self.with_bbox, "Bbox head must be implemented."
 
         det_bboxes, det_labels = self.simple_test_bboxes(
             x, img_metas, proposal_list, self.test_cfg, rescale=rescale, **kwargs
         )
-        if torch.onnx.is_in_onnx_export():
-            if self.with_mask:
-                segm_results = self.simple_test_mask(x, img_metas, det_bboxes, det_labels, rescale=rescale, **kwargs)
-                return det_bboxes, det_labels, segm_results
-            else:
-                return det_bboxes, det_labels
 
-        bbox_results = [bbox2result(det_bboxes[i], det_labels[i], self.num_classes) for i in range(len(det_bboxes))]
+        bbox_results = [bbox2result(det_bboxes[i], det_labels[i], len(self.CLASSES)) for i in range(len(det_bboxes))]
 
-        if not self.with_mask:
-            return bbox_results
-        else:
-            segm_results = self.simple_test_mask(x, img_metas, det_bboxes, det_labels, rescale=rescale)
-            return list(zip(bbox_results, segm_results))
+        return bbox_results

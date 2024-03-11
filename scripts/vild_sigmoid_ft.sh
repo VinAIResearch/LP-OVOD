@@ -3,7 +3,7 @@ python ./tools/train.py \
     --work-dir workdirs/vild_sigmoid_ft \
     --no-validate \
     --cfg-options \
-        load_from=workdirs/vild_sigmoid/latest.pth \
+        load_from=$1 \
         model.roi_head.prompt_path="ovd_coco_text_embedding.pth" \
         model.roi_head.temperature_test=0.01 \
         model.roi_head.alpha=0. \
@@ -12,4 +12,4 @@ python ./tools/train.py \
         model.roi_head.neg_pos_ub=10 \
         model.roi_head.clip_root="weights" \
         model.roi_head.bbox_head.ensemble=True \
-        data.train.dataset.ann_file=retrieval/retrieve_proposal_onl100.json
+        data.train.ann_file=retrieval/retrieve_proposal_onl100.json

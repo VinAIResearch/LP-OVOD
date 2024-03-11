@@ -166,8 +166,6 @@ def main():
         param.requires_grad_(False)
 
     sampler = DistributedSampler(dataset, world_size, rank, shuffle=False)
-    dataset[0]
-    sampler = None
     dataloader = data.DataLoader(dataset, batch_size=args.batch_size, num_workers=args.num_workers, sampler=sampler)
 
     embeddings = torch.HalfTensor(

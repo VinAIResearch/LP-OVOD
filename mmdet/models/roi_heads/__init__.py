@@ -11,6 +11,8 @@ from .mask_heads import (
 )
 from .roi_extractors import SingleRoIExtractor
 from .standard_roi_head import StandardRoIHead
+from .standard_roi_head_sigmoid import StandardRoIHeadSigmoid
+from .standard_roi_head_sigmoid_ft import StandardRoIHeadSigmoidFinetune
 
 
 __all__ = [
@@ -28,4 +30,6 @@ __all__ = [
     "HTCMaskHead",
     "MaskIoUHead",
     "MaskPointHead",
+    "StandardRoIHeadSigmoidFinetune",
+    "StandardRoIHeadSigmoid",
 ]

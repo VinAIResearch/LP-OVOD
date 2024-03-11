@@ -11,15 +11,11 @@ from tqdm import tqdm
 from ..builder import HEADS, build_head, build_roi_extractor
 from .base_roi_head import BaseRoIHead
 from .class_name import (
-    COCO_CLASSES,
     COCO_OVD_ALL_CLS,
-    COCO_SEEN_CLS,
-    COCO_UNSEEN_CLS,
     LVIS_CLASSES,
     VOC_CLASSES,
     Object365_CLASSES,
-    coco_unseen_ids_test,
-    coco_unseen_ids_train,
+    coco_novel_label_ids,
     lvis_base_label_ids,
     lvis_novel_label_ids,
     template_list,
@@ -69,8 +65,6 @@ class StandardRoIHead(BaseRoIHead, BBoxTestMixin, MaskTestMixin):
             self.CLASSES = COCO_OVD_ALL_CLS
         elif bbox_head.num_classes == 65:
             self.CLASSES = COCO_OVD_ALL_CLS
-        elif bbox_head.num_classes == 80:
-            self.CLASSES = COCO_CLASSES
         elif bbox_head.num_classes == 20:
             self.CLASSES = VOC_CLASSES
         elif bbox_head.num_classes == 1203:
@@ -95,17 +89,9 @@ class StandardRoIHead(BaseRoIHead, BBoxTestMixin, MaskTestMixin):
             self.novel_index = F.pad(
                 torch.bincount(self.novel_label_ids), (0, self.num_classes - self.novel_label_ids.max())
             ).bool()
-        elif self.num_classes == 80:
-            self.novel_label_ids = torch.tensor(coco_unseen_ids_train, device=device)
-            self.unseen_label_ids_test = torch.tensor(coco_unseen_ids_test, device=device)
-            self.novel_index = F.pad(
-                torch.bincount(self.novel_label_ids), (0, self.num_classes - self.novel_label_ids.max())
-            ).bool()
         elif self.num_classes == 65:
-            base_label_ids = [COCO_OVD_ALL_CLS.index(i) for i in COCO_SEEN_CLS]
-            self.base_label_ids = torch.tensor(base_label_ids, device=device)
-            novel_label_ids = [COCO_OVD_ALL_CLS.index(i) for i in COCO_UNSEEN_CLS]
-            self.novel_label_ids = torch.tensor(novel_label_ids, device=device)
+            self.base_label_ids = torch.tensor(coco_novel_label_ids, device=device)
+            self.novel_label_ids = torch.tensor(coco_novel_label_ids, device=device)
             self.novel_index = F.pad(
                 torch.bincount(self.novel_label_ids), (0, self.num_classes - self.novel_label_ids.max())
             ).bool()

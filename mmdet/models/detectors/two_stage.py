@@ -185,5 +185,4 @@ class TwoStageDetector(BaseDetector):
         else:
             proposal_list = proposals
 
-        # proposal_list = self.roi_head.get_refined_bboxes(x, proposal_list, img_metas)
-        return self.roi_head.simple_test(x, img, proposal_list, img_metas, rescale=rescale, objectness=objectness)
+        return self.roi_head.simple_test(x, proposal_list, img_metas, rescale=rescale, objectness=objectness)

@@ -2,9 +2,9 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
-from fvcore.nn import sigmoid_focal_loss_jit
 from mmdet.core import bbox2roi
 from ..builder import HEADS
+from ..losses.focal_loss import py_sigmoid_focal_loss
 from .class_name import coco_base_label_ids, coco_novel_label_ids
 from .standard_roi_head_sigmoid import StandardRoIHeadSigmoid
 
@@ -95,7 +95,7 @@ class StandardRoIHeadSigmoidFinetune(StandardRoIHeadSigmoid):
 
         num_pos_bboxes = sum([res.pos_bboxes.size(0) for res in sampling_results])
         cls_loss = (
-            sigmoid_focal_loss_jit(cls_score_text, bin_labels, reduction="sum", gamma=2, alpha=0.25) / num_pos_bboxes
+            py_sigmoid_focal_loss(cls_score_text, bin_labels, reduction="sum", gamma=2, alpha=0.25) / num_pos_bboxes
         )
         loss_bbox = dict()
 

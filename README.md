@@ -31,16 +31,19 @@ Please **CITE** our paper whenever this repository is used to help produce publi
 ## Requirements
 + python3.8
 + pytorch 1.7.0
+```
+pip install torch==1.7.1+cu110 torchvision==0.8.2+cu110 torchaudio==0.7.2 -f https://download.pytorch.org/whl/torch_stable.html
+```
 
 ```
 pip install -r requirements/build.txt
 pip install -e .
 pip install git+https://github.com/openai/CLIP.git
-pip uninstall pycocotools -y
-pip uninstall mmpycocotools -y
-pip install mmpycocotools
+<!-- pip uninstall pycocotools -y
+pip install mmpycocotools -->
 pip install git+https://github.com/lvis-dataset/lvis-api.git
 pip install mmcv-full==1.2.5 -f https://download.openmmlab.com/mmcv/dist/cu110/torch1.7.0/index.html
+pip install yapf==0.40.2
 conda install -c pytorch faiss-gpu
 ```
 

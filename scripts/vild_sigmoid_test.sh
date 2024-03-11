@@ -1,6 +1,6 @@
 python -m torch.distributed.launch --nproc_per_node=1 ./tools/test.py \
     "configs/coco/vild_sigmoid_ft.py" \
-    workdirs/vild_sigmoid_ft/latest.pth --launcher "pytorch" \
+    $1 --launcher "pytorch" \
     --eval bbox \
     --cfg-options \
         model.roi_head.prompt_path="ovd_coco_text_embedding.pth" \
