@@ -19,7 +19,7 @@ train_pipeline = [
     dict(type="Normalize", **img_norm_cfg),
     dict(type="Pad", size_divisor=32),
     dict(type="DefaultFormatBundle"),
-    dict(type="Collect", keys=["img", "gt_bboxes", "gt_labels"]),
+    dict(type="Collect", keys=["img", "proposals", "gt_bboxes", "gt_labels"]),
 ]
 
 test_pipeline = [
@@ -47,6 +47,8 @@ data = dict(
     train=dict(
         type=dataset_type,
         ann_file=data_root + "annotations/ovd_ins_train2017_b.json",
+        proposal_file="proposals/train_coco_proposals.pkl",
+        proposal_id_map="proposals/train_coco_id_map.json",
         img_prefix=data_root + "train2017/",
         pipeline=train_pipeline,
     ),
